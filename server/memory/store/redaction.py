@@ -32,6 +32,10 @@ the text of a version, and what this module scrubs:
     value of the key (a superseded or deleted row, or one the worker has not
     relinked yet) may hold `suggestion`, a rewrite of that value's text; it is
     blanked. The links made from the live head's value keep theirs.
+  loom.shared, a copy promoted from the key: every version whose `value` is the
+    redacted text is scrubbed, and its search rows (scope 'shared') holding that text
+    are deleted (`shared_copies`, `shared_copy_scrubs`), unless the live head holds
+    the text too.
   The user's profiles built from the memory: a profile worker writes what a
     model made of the user's facts and names the facts it read in the row's
     trace (`profile.fold:<label>:<memory ids>`). Every version whose trace
@@ -44,8 +48,7 @@ Out of scope, with the reason:
   loom.memory_evidence: the source transcript a fact was extracted from, not
     the memory; erasure owns it.
   memory_belief_sources, memory_chunk_sources: links by id and hash, no text.
-  loom.shared and the entity graph tables: other planes, with their own
-    erasure steps.
+  The entity graph tables: another plane, with its own erasure steps.
   The answer cache and the ask precedents quoting the key are deleted by the
   memory.redact handler.
   Stored idempotency answers (24 hours) may quote the text in a peer's excerpt:
@@ -74,6 +77,7 @@ from server.memory.domain.redaction_lineage import (
     is_content_hash,
     later_copies,
 )
+from server.memory.domain.search_types import SHARED_AGENT
 from server.memory.domain.set_chunk_session import set_chunk_session_id
 from server.memory.store import pg_memory
 from server.memory.store.rows import IdentityKey
@@ -92,6 +96,7 @@ _VERSIONS_SCRUB = """ALTER TABLE loom.memory_versions UPDATE
 _EMBEDDINGS_PURGE = "DELETE FROM loom.memory_embeddings"
 _CHUNKS_PURGE = "DELETE FROM loom.memory_chunks"
 _LINKS_SCRUB = "ALTER TABLE loom.memory_code_links UPDATE suggestion = '', judged_hash = ''"
+_SHARED_SCRUB = """ALTER TABLE loom.shared UPDATE value = '"[REDACTED]"'"""
 _MARK_REDACTED = ", redacted_at = {ts:DateTime}, redaction_reason = {rb:String}"
 # The user's profile versions whose trace names the memory among those they were
 # built from (`profile.fold:<label>:<id>,<id>,...`). Redacted versions count too:
@@ -497,6 +502,50 @@ async def key_derivative_scrubs(
     ]
 
 
+async def shared_copies(
+    org: str, namespace: str, source: str, *, ch: _CHClient | None = None
+) -> list[dict[str, Any]]:
+    """The distinct `memory_key` and `value` of every loom.shared version promoted from
+    `source` (a `promotion_source`), live, demoted or superseded. Read sequentially: a
+    promotion another replica just wrote must be seen."""
+    ch = ch or _default_client()
+    rows = await ch.query_all(
+        "SELECT DISTINCT memory_key, value FROM loom.shared "
+        "WHERE org = {org:String} AND namespace = {ns:String} "
+        "AND has(promoted_from, {src:String})" + _SEQUENTIAL,
+        params={"org": org, "ns": namespace, "src": source},
+    )
+    return [dict(r) for r in rows]
+
+
+def shared_copy_scrubs(
+    org: str, namespace: str, source: str, held: Sequence[tuple[str, str]], excerpts: Sequence[str]
+) -> list[Scrub]:
+    """The purge of the search rows of the shared copies in `held` (key, value) whose
+    excerpt is one of `excerpts`, then the scrub of those copies' versions. The search
+    rows go first: a redact cut off between the two finds the copies again."""
+    keys = sorted({k for k, _ in held})
+    scope = {"org": org, "ns": namespace, "keys": keys}
+    return [
+        Scrub(
+            "loom.memory_embeddings",
+            _EMBEDDINGS_PURGE,
+            "org = {org:String} AND namespace = {ns:String} AND agent = {a:String} "
+            "AND user_id = '-' AND session_id = '-' AND scope = 'shared' "
+            "AND memory_key IN {keys:Array(String)} AND content_excerpt IN {ex:Array(String)}",
+            {**scope, "a": SHARED_AGENT, "ex": sorted(set(excerpts))},
+        ),
+        Scrub(
+            "loom.shared",
+            _SHARED_SCRUB,
+            "org = {org:String} AND namespace = {ns:String} "
+            "AND memory_key IN {keys:Array(String)} AND has(promoted_from, {src:String}) "
+            "AND value IN {values:Array(String)}",
+            {**scope, "src": source, "values": sorted({v for _, v in held})},
+        ),
+    ]
+
+
 async def redacted_since(after: datetime, *, ch: _CHClient | None = None) -> list[dict[str, Any]]:
     """The versions a redaction scrubbed in ClickHouse after `after`: (org, memory_id,
     version, redaction_reason), oldest redaction first. A scan of the history mirror, for
@@ -520,4 +569,6 @@ __all__ = [
     "redact_versions",
     "redacted_since",
     "run_scrubs",
+    "shared_copies",
+    "shared_copy_scrubs",
 ]

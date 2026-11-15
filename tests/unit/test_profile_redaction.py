@@ -74,6 +74,7 @@ _PROFILE_TABLES = (
     ddl("memory_embeddings"),
     ddl("memory_chunks"),
     ddl("memory_code_links"),
+    ddl("shared"),
 )
 
 

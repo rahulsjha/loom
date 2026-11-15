@@ -107,26 +107,26 @@ Namespace erasure reaches `loom.shared`: its `shared.tombstone` step takes every
 row of the namespace and its census counts them, beside the user erasure's match by
 provenance.
 
+A redact of a past version of a source (`memory.redact` refuses the live head) reaches its
+shared copies: every `loom.shared` version promoted from the key whose `value` is the
+version's text (by the `content_sha256` the redact keeps, so a redact run again still
+finds a copy) is scrubbed, and its search rows holding the text are deleted. The redact
+then marks the namespace's memory plane (`namespace_write_marks.bump`), since a mutation
+moves no mark. A copy is left as it is while the live head holds the redacted text too (an
+edit reverted byte for byte), as `memory.redact` leaves a live copy of a text it scrubs
+from history.
+
 The shared layer needs these changes still, each in the pull request that adds the term
 leg except where a change names another, because the term leg serves shared rows to every
 reader:
 
-- **A redact** of a past version of a definition's source (`memory.redact` refuses the
-  live head) reaches two things, and no more:
-  - the shared row whose `value` has the version's served hash (read from the version
-    before the scrub, or, when an older build already scrubbed it, the `content_sha256`
-    the redact keeps, so a redact run again still finds it): its text is scrubbed and its
-    embedding retired, which a redact does not reach today. The redact then marks the
-    namespace's memory plane (`namespace_write_marks.bump`), since a mutation moves no
-    mark;
-  - every `knowledge_gap` and `query_history` candidate whose drafted value has that hash,
-    or that the version's `candidate-id:` tag names, promoted or not: its text is blanked,
-    since `learnings.list` shows it to admins, and a blanked candidate is not promoted
-    (`learnings.review` answers it not found, as it does a blanked `assistant_turn`
-    candidate today); the pull request that adds those candidate kinds adds this part;
-  - nothing else: no other draft of the term, and neither the shared copy nor the drafts
-    when the live head still holds the redacted text (an edit reverted byte for byte), as
-    `memory.redact` leaves a live copy of a text it scrubs from history.
+- **A redact** of a past version of a definition's source, in the pull request that adds
+  the `knowledge_gap` and `query_history` candidate kinds, also reaches every such
+  candidate whose drafted value is the version's text, or that the version's
+  `candidate-id:` tag names, promoted or not: its text is blanked, since `learnings.list`
+  shows it to admins, and a blanked candidate is not promoted (`learnings.review` answers
+  it not found, as it does a blanked `assistant_turn` candidate). No other draft of the
+  term is reached, and no draft while the live head holds the redacted text.
 - **The review path's promotion** of a `knowledge_gap` or `query_history` draft, in the
   pull request that adds those kinds: the approved hash is the canonical-JSON hash of the
   drafted value; `decided_by` and the audit subject come from the token, never the body's
@@ -282,14 +282,13 @@ the process that wrote it, and in every other process once the writing process f
 marks (`namespace_write_marks_flush_interval_s`). An answer retrieved between a
 promotion's shared row and its vector (including a vector the embedding worker fills in
 later) is still reused. A relabel to `medium` or `high` moves the mark through its new
-version of the source row in `loom.memory`, and the redact's scrub of a shared copy will
-move it (`namespace_write_marks.bump`, the redact change above). Rolling upgrades below
-covers N-1's. A lapse with no write, a source passing its `expires_at` or `valid_to`, does
-not move the mark, and the precedent path's evidence check compares each cited row's live
-hash (catching a tombstone, a redaction or an edit), not its status or validity. An answer
-that quoted such a definition is reused for up to
-`memory_ask_precedents_fast_max_age_hours` (with no bound when it is 0), as for any row
-that expires today.
+version of the source row in `loom.memory`, and the redact's scrub of a shared copy moves
+it (`namespace_write_marks.bump`). Rolling upgrades below covers N-1's. A lapse with no
+write, a source passing its `expires_at` or `valid_to`, does not move the mark, and the
+precedent path's evidence check compares each cited row's live hash (catching a tombstone,
+a redaction or an edit), not its status or validity. An answer that quoted such a
+definition is reused for up to `memory_ask_precedents_fast_max_age_hours` (with no bound
+when it is 0), as for any row that expires today.
 
 **Ranking-neutral rule:** when no governed term matches, the leg adds nothing and the
 served list is exactly what it was before. The memory-plane rule asks for a paired
@@ -614,9 +613,9 @@ shared copy served by N-1's search; N's search leaves it out by that row's label
 N-1 promoted from another row, which it does not refuse (a `medium` one included), is
 judged by the namespace-wide row under its key, not by the row it came from: the
 re-promotion step above replaces it with one promoted from that row. N-1's redact does not
-reach the shared row's text, as today: one run during the rollout or after a rollback is
-run again once N serves. A namespace erasure an older build without the shared step ran is
-cleared as the rolling-upgrades rule "A namespace's promoted rows" says ([rolling
+reach the shared row's text: one run during the rollout or after a rollback is run again
+once N serves. A namespace erasure an older build without the shared step ran is cleared
+as the rolling-upgrades rule "A namespace's promoted rows" says ([rolling
 upgrades](../architecture/rolling-upgrades.md)).
 
 A rollback to N-1 meets what N wrote. Before it, the operator turns

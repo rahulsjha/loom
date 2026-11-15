@@ -14,6 +14,7 @@ Covered:
 
 from __future__ import annotations
 
+import json
 import sys
 import uuid
 from pathlib import Path
@@ -223,3 +224,53 @@ async def test_a_restore_after_delete_and_redact_brings_back_no_redacted_text(
         restored = await a.memory.restore("k")
         assert restored["restored"] is False and restored["redacted"] is True
         assert await a.memory.get("k") is None
+
+
+async def _shared_value(ns: str, key: str) -> str:
+    from server.core.ch import get_client
+
+    row = await get_client().query_one(
+        "SELECT value FROM loom.shared FINAL "
+        "WHERE org = {org:String} AND namespace = {ns:String} AND memory_key = {k:String}",
+        params={"org": ORG, "ns": ns, "k": key},
+    )
+    return str((row or {}).get("value"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reverted", [False, True])
+async def test_a_redact_reaches_the_shared_copy_of_its_text(
+    control_plane_url, mint_test_token, reverted: bool
+) -> None:
+    """A version promoted to the shared layer and then redacted leaves it: the copy's text
+    is scrubbed and a shared search no longer finds it. While the live head holds the text
+    again (an edit reverted), the copy stays, as the head does."""
+    from loom import Agent
+
+    ns = f"redact-shared-{uuid.uuid4().hex[:6]}"
+    tok = mint_test_token(org=ORG, namespaces=[ns], roles=["admin", "writer"])
+    secret = {"note": "the vault code is 4417"}
+    async with Agent(
+        org=ORG, namespace=ns, agent="t", base_url=control_plane_url, api_key=tok
+    ) as a:
+
+        async def shared_keys() -> set[str]:
+            hits = await a.memory.search("vault code", scope="shared", top_k=5)
+            return {h.memory_key for h in hits}
+
+        first = await a.memory.set("k", secret, memory_type="semantic")
+        await a.memory.promote("k")
+        await eventually(shared_keys, description="the shared copy is found")
+        await a.memory.set("k", {"note": "the code was rotated"}, memory_type="semantic")
+        if reverted:
+            await a.memory.set("k", secret, memory_type="semantic")
+        result = await a.memory.redact(
+            first["memory_id"], first["version"], reason="leak", redacted_by="t"
+        )
+        assert result["redacted"] is True
+        if reverted:
+            assert json.loads(await _shared_value(ns, "k")) == secret
+            assert "k" in await shared_keys()
+        else:
+            assert await _shared_value(ns, "k") == '"[REDACTED]"'
+            assert "k" not in await shared_keys()

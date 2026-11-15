@@ -718,6 +718,7 @@ async def redact_version(
         ),
     )
     await memory_repo.run_scrubs(scrubs, apply=True)
+    shared_keys = await _scrub_shared_copies(org, target, head_now)
     await _scrub_profile_derivatives(org, target, profiles, through=through)
     # A redacted value may already be quoted in a cached answer (7-day TTL), a precedent
     # (30 days) or a cached code.ask answer; each carries the keys of the memory it was
@@ -726,7 +727,8 @@ async def redact_version(
     # A scrubbed profile key may be the only row of a window that quoted the text. Windows
     # hold bare keys and every user's profile shares its key, so this reach is org-wide.
     cache_rows = precedent_rows = 0
-    for key in [target.memory_key, *sorted({p.memory_key for p in profiles})]:
+    quoted = {*shared_keys, *(p.memory_key for p in profiles)} - {target.memory_key}
+    for key in [target.memory_key, *sorted(quoted)]:
         cache_rows += await memory_repo.delete_llm_response_cache_by_key(org, key)
         cache_rows += await memory_repo.delete_code_answers_by_key(org, key)
         precedent_rows += await memory_repo.delete_ask_precedents_by_key(org, key)
@@ -853,6 +855,39 @@ async def _scrub_profile_derivatives(
             ),
         )
         await memory_repo.run_scrubs(scrubs, apply=True)
+
+
+async def _scrub_shared_copies(
+    org: str, target: HistoryTarget, head_now: MemoryRow | None
+) -> list[str]:
+    """Scrub the shared copies promoted from the key that hold the redacted text, and
+    their search rows; the keys they sit under. None while the live head holds the text
+    too: `memory.redact` leaves a live copy of a text it scrubs from history."""
+    import server.memory.store as memory_repo
+    from server.core import namespace_write_marks
+    from server.memory.domain.excerpt import build_excerpt
+    from server.memory.domain.promotion_source import promotion_source
+
+    if head_now is not None and head_now.content_sha256 == target.content_sha256:
+        return []
+    source = promotion_source(
+        org, target.namespace, target.agent, target.user_id, target.session_id, target.memory_key
+    )
+    copies = await memory_repo.shared_copies(org, target.namespace, source)
+    held = [
+        (str(c["memory_key"]), str(c["value"]))
+        for c in copies
+        if _content_sha256_of_stored(str(c["value"])) == target.content_sha256
+    ]
+    if not held:
+        return []
+    # A promotion embeds the copy's value framed by its source's key.
+    excerpts = [build_excerpt(value, memory_key=target.memory_key) for _, value in held]
+    scrubs = memory_repo.shared_copy_scrubs(org, target.namespace, source, held, excerpts)
+    await memory_repo.run_scrubs(scrubs, apply=True)
+    # A mutation moves no write mark: an answer that quoted a copy is not reused.
+    await namespace_write_marks.bump(org, target.namespace, "memory")
+    return sorted({key for key, _ in held})
 
 
 def _live_sha(head: MemoryRow | None) -> str:
