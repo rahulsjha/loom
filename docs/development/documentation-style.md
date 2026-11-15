@@ -96,6 +96,8 @@ These pages are rendered from the code. Edit the source, then run the generator.
 | [reference/status.md](../reference/status.md)               | op `maturity` and the boolean settings of `server/settings/catalog.py` that load false | `python scripts/codegen/docs_reference.py`     |
 | [reference/schema.md](../reference/schema.md)               | `schemas/schema.sql`                                                                   | `python scripts/codegen/docs_reference.py`     |
 
+On the documentation site, `scripts/docs_site/hooks.py` serves `llms.txt` with its links pointing at each page's Markdown copy, `llms-full.txt` (the pages that say what Loom is and how to start) and the repository's `llms-install.md`.
+
 The SDK op tables (`sdk/python/loom/ops.py`, `sdk/typescript/src/generated/ops.ts`) come from `scripts/codegen/sdk_py_gen.py` and `sdk_ts_gen.py` ([code generation](code-generation.md)).
 
 ## Before you push
@@ -107,5 +109,3 @@ python scripts/codegen/docs_reference.py --check
 pip install --require-hashes --no-deps --only-binary=:all: -r scripts/docs_site/requirements.txt  # once, in a virtualenv
 mkdocs build --strict                         # the docs site build CI runs
 ```
-
-The site build also serves each page's Markdown beside its HTML page (`use-cases/agent-memory.md`), `llms.txt` with its links pointing at those files, and `llms-full.txt`, which holds the pages that say what Loom is and how to start. It also serves the repository's `llms-install.md` (`scripts/docs_site/hooks.py`).

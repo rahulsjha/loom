@@ -2,15 +2,16 @@
 
 Each page's meta description is its first sentence, the line llms.txt lists for it, cut to
 160 characters, so a search result shows the answer the page opens with. An inline
-Markdown link or image that leaves docs/ (source files, the README, llms.txt) points at
-the file on GitHub instead of a missing page; links in code blocks and code spans are left
+Markdown link or image that leaves docs/ (source files, the README) points at the file on
+GitHub instead of a missing page, except the root files the site serves itself (`llms.txt`,
+`llms-install.md`), which point at the site; links in code blocks and code spans are left
 as written, and reference-style links are not rewritten (the docs use inline links). The
 sidebar follows llms.txt's section order, with Overview and Quickstart first in Getting
 started, and a generated page gets no edit button (its source is the generator, not the
 page).
 
 After the build, the site also serves what agents fetch instead of HTML: each page's
-Markdown at its source path (`use-cases/agent-memory.md` next to `use-cases/agent-memory/`),
+Markdown beside it (`use-cases/agent-memory.md`) and at the page URL plus `index.html.md`,
 `llms.txt` with its links pointing at those files, `llms-full.txt` with the full text of
 the pages that say what Loom is and how to start (the whole docs are several megabytes),
 and the repository's `llms-install.md`.
@@ -63,20 +64,17 @@ def on_page_markdown(markdown, page, config, files):
         page.meta["description"] = html.escape(description)
     if _WHOLLY_GENERATED.search(markdown):
         page.edit_url = None
-    site = config["site_url"] if config else ""
-    return _rewrite_links(markdown, page.file.src_uri, site_files=site)
+    return _rewrite_links(markdown, page.file.src_uri, config["site_url"], pages=False)
 
 
 # Files at the repository root that the site serves itself (on_post_build).
 _SITE_FILES = ("llms.txt", "llms-install.md")
 
 
-def _rewrite_links(markdown: str, src_uri: str, site_url: str = "", site_files: str = "") -> str:
-    """`markdown` of the page at `src_uri` with its links that leave docs/ pointing at GitHub,
-    except the root files in `_SITE_FILES`, which point at `site_files` (the site's URL)
-    when given; and, given `site_url`, its links inside docs/ pointing at that site's files
-    too."""
-    site_files = site_files or site_url
+def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, pages: bool) -> str:
+    """`markdown` of the docs/ file at `src_uri` with its links to the site's root files on
+    `site_url`, other links that leave docs/ on GitHub, and, if `pages`, links to other
+    pages on the site's Markdown copies (otherwise left relative)."""
     page_dir = posixpath.dirname("docs/" + src_uri)
 
     def rewrite(m: re.Match[str]) -> str:
@@ -87,11 +85,11 @@ def _rewrite_links(markdown: str, src_uri: str, site_url: str = "", site_files: 
             return m.group(0)
         resolved = posixpath.normpath(posixpath.join(page_dir, target))
         if resolved.startswith("docs/"):
-            if not site_url:
+            if not pages:
                 return m.group(0)
             base, resolved = site_url, resolved[len("docs/") :]
-        elif site_files and resolved in _SITE_FILES:
-            base = site_files
+        elif resolved in _SITE_FILES:
+            base = site_url
         else:
             base = RAW if m.group("bang") else BLOB
         anchor = m.group("anchor") or ""
@@ -159,7 +157,8 @@ _FULL_SECTIONS = ("getting-started", "use-cases", "concepts")
 _FULL_PAGES = ("faq.md", "glossary.md")
 # A docs/ page named in llms.txt, not the tail of a longer path or URL.
 _DOCS_PAGE = re.compile(r"(?<![\w/.-])docs/([\w./-]*\.md)")
-_ROOT_INSTALL = re.compile(r"(?<![\w/.-])llms-install\.md")
+# A link to the root llms-install.md.
+_ROOT_INSTALL = re.compile(r"\]\(llms-install\.md\)")
 
 
 def _html_url(site_url: str, uri: str) -> str:
@@ -191,11 +190,11 @@ def on_post_build(config):
     for src in sorted(docs.rglob("*.md")):
         uri = src.relative_to(docs).as_posix()
         # Links are absolute, so the same text serves both places the copy lives: beside
-        # the page (llms.txt and the page's <link> name it) and inside the page's folder,
-        # where the llms.txt format looks for a page's Markdown.
-        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url)
+        # the page (llms.txt and the page's <link> name it) and at the page URL plus
+        # index.html.md, where the llms.txt format looks for a page's Markdown.
+        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, pages=True)
         text = f"{_source_line(url, uri)}\n\n{body.strip()}\n"
-        for out in {site / uri, site / _html_url("", uri) / "index.md"}:
+        for out in {site / uri, site / _html_url("", uri) / "index.html.md"}:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text, encoding="utf-8")
 
@@ -203,18 +202,20 @@ def on_post_build(config):
     # its Markdown file, so "docs/use-cases/index.md" becomes "<site>/use-cases/index.md".
     llms = (ROOT / "llms.txt").read_text(encoding="utf-8")
     llms = _DOCS_PAGE.sub(lambda m: url + m.group(1), llms)
-    llms = _ROOT_INSTALL.sub(url + "llms-install.md", llms)
+    llms = _ROOT_INSTALL.sub(f"]({url}llms-install.md)", llms)
     head, sep, rest = llms.partition("\n\n## ")
-    full_note = (
-        f"The pages that say what Loom is and how to start, in one file: {url}llms-full.txt."
+    full = (
+        f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): the pages that say what Loom"
+        " is and how to start, in one file.\n\n"
     )
-    (site / "llms.txt").write_text(f"{head}\n\n{full_note}{sep}{rest}", encoding="utf-8")
+    body, opt, optional = rest.partition("## Optional\n")
+    (site / "llms.txt").write_text(f"{head}{sep}{body}{full}{opt}{optional}", encoding="utf-8")
 
     # The install steps a coding agent follows, at the root as in the repository.
     install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
     # Links resolve from the file's own place: the repository root, one level above docs/.
     (site / "llms-install.md").write_text(
-        _rewrite_links(install, "../llms-install.md", url), encoding="utf-8"
+        _rewrite_links(install, "../llms-install.md", url, pages=True), encoding="utf-8"
     )
 
     # The title and summary quote of llms.txt open llms-full.txt too.
@@ -227,6 +228,6 @@ def on_post_build(config):
     for src in pages + [docs / name for name in _FULL_PAGES]:
         uri = src.relative_to(docs).as_posix()
         # One file holds every page, so a link between them names the page's own file.
-        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url)
+        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, pages=True)
         parts.append(f"{_source_line(url, uri)}\n\n{body.strip()}\n")
     (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")

@@ -389,6 +389,7 @@ def render_group_pages() -> dict[str, str]:
 # --- llms.txt -----------------------------------------------------------------
 
 LLMS_TXT = ROOT / "llms.txt"
+_AGENT_SETUP_TXT = "https://github.com/ClickHouse/loom/releases/latest/download/agent-setup.txt"
 
 
 def render_llms_txt() -> str:
@@ -402,29 +403,43 @@ def render_llms_txt() -> str:
         "with Postgres as an option for live memory and knowledge state, and serves it over "
         "MCP, HTTP and the Python and TypeScript SDKs.",
         "",
-        "Start with docs/index.md (the map). To install Loom, a coding agent reads "
-        "docs/getting-started/agent-setup.md and follows the agent-setup.txt each release "
-        "attaches, with its pins filled in; for Cline or another MCP client, it follows "
-        "llms-install.md. To connect to a running server: "
-        "docs/getting-started/connect-a-coding-agent.md. To decide whether Loom fits: "
-        "docs/getting-started/overview.md; for one need, docs/use-cases/index.md. "
-        "Every operation's fields are in docs/reference/operations.md and the pages it links.",
+        "Start with [the docs map](docs/index.md). To install Loom, a coding agent reads "
+        "[agent setup](docs/getting-started/agent-setup.md) and follows "
+        f"[agent-setup.txt]({_AGENT_SETUP_TXT}), "
+        "which each release attaches with its pins filled in; for Cline or another MCP "
+        "client, it follows [llms-install.md](llms-install.md). To connect to a running "
+        "server: [connect a coding agent](docs/getting-started/connect-a-coding-agent.md). "
+        "To decide whether Loom fits: [the overview](docs/getting-started/overview.md); for "
+        "one need, [use cases](docs/use-cases/index.md). Every operation's fields are in "
+        "[operations](docs/reference/operations.md) and the pages it links.",
         "",
     ]
-    for heading, sub in SECTIONS:
+
+    def section(heading: str, sub: str) -> None:
         # A section's own index.md comes first, the rest by path.
         pages = sorted(
             (p for p in (docs / sub).rglob("*.md") if p.parent != GROUP_DIR),
             key=lambda p: (p != docs / sub / "index.md", p),
         )
         if not pages:
-            continue
+            return
         out.append(f"## {heading}\n")
+        if sub == "getting-started":
+            out.append(
+                "- [Install Loom for any MCP client](llms-install.md): the steps a coding "
+                "agent follows to install Loom for Cline or another MCP client and check it."
+            )
         for p in pages:
             title, outcome = page_summary(p)
             rel = p.relative_to(ROOT).as_posix()
             out.append(f"- [{title}]({rel})" + (f": {outcome}" if outcome else ""))
         out.append("")
+
+    # Development pages help contributors, not a reader deciding on or using Loom: the
+    # llms.txt format's Optional section is the one a reader may skip.
+    for heading, sub in SECTIONS:
+        if sub != "development":
+            section(heading, sub)
     out.append("## FAQ and glossary\n")
     for p in (docs / "glossary.md", docs / "faq.md"):
         if p.exists():
@@ -433,7 +448,9 @@ def render_llms_txt() -> str:
                 f"- [{title}]({p.relative_to(ROOT).as_posix()})"
                 + (f": {outcome}" if outcome else "")
             )
-    return "\n".join(out) + "\n"
+    out.append("")
+    section("Optional", "development")
+    return "\n".join(out).rstrip("\n") + "\n"
 
 
 # --- workers ------------------------------------------------------------------
