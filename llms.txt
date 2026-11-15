@@ -29,6 +29,17 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Agent runs, traces and PR history](docs/use-cases/runs-and-pr-history.md): Loom records the work coding agents do, as runs and searchable session conversations, and connects it to your code history.
 - [Self-hosted agent memory on ClickHouse](docs/use-cases/self-hosted-clickhouse.md): Loom runs on your own infrastructure, with Docker or on Kubernetes with its Helm chart, and stores agent memory, documents, conversations and code indexes as tables in ClickHouse.
 
+## FAQ and glossary
+
+- [Frequently asked questions](docs/faq.md): Short answers to the first questions people ask.
+- [Glossary](docs/glossary.md): Loom's terms, alphabetically, each defined once.
+
+## Concepts
+
+- [Identities and namespaces](docs/concepts/identities-and-namespaces.md): Loom answers two questions on every call: whose row is this (the identity tuple, plus two columns the server stamps), and may this caller touch it (the token, the namespace's grants and its classification).
+- [Memory](docs/concepts/memory.md): A memory is one claim an agent should find again: "deploys happen on Tuesdays", "the payments team owns the billing service".
+- [Retrieval and ranking](docs/concepts/retrieval-and-ranking.md): This page explains how `memory.search` finds rows.
+
 ## Operations
 
 - [Exporting usage to a data warehouse](docs/operations/analytics-export.md): `loom export-analytics` writes one UTC day of usage and a snapshot of the namespaces to an S3 bucket as Parquet files, one file per entity per day, for a data warehouse to load.
@@ -109,12 +120,6 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [TypeScript SDK reference](docs/reference/typescript-sdk.md): The TypeScript SDK (`@clickhouse/loom`, source in `sdk/typescript/src/`) is a typed client over the HTTP API.
 - [Workers reference](docs/reference/workers.md): A worker is a supervised background loop: one pass function run on an interval by the worker supervisor.
 
-## Concepts
-
-- [Identities and namespaces](docs/concepts/identities-and-namespaces.md): Loom answers two questions on every call: whose row is this (the identity tuple, plus two columns the server stamps), and may this caller touch it (the token, the namespace's grants and its classification).
-- [Memory](docs/concepts/memory.md): A memory is one claim an agent should find again: "deploys happen on Tuesdays", "the payments team owns the billing service".
-- [Retrieval and ranking](docs/concepts/retrieval-and-ranking.md): This page explains how `memory.search` finds rows.
-
 ## Guides
 
 - [Integrate Loom into an agent](docs/guides/agent-integration.md): This guide covers what an agent sends to Loom and how it reads the answers: the client surface, the identity, what to write, and how to read.
@@ -161,11 +166,6 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Benchmark results](docs/benchmarks/results.md): This page lists only numbers that a committed file reproduces.
 - [Running the benchmarks](docs/benchmarks/running.md): Run every command from the repository root with the checkout's interpreter and the root first on `PYTHONPATH`:
 - [Skill eval](docs/benchmarks/skill-eval.md): The skill eval grades the `loom-memory` skill by the namespace an agent leaves behind.
-
-## FAQ and glossary
-
-- [Glossary](docs/glossary.md): Loom's terms, alphabetically, each defined once.
-- [Frequently asked questions](docs/faq.md): Short answers to the first questions people ask.
 
 ## Optional
 

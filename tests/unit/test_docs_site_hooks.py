@@ -330,3 +330,12 @@ def test_links_to_the_root_files_the_site_serves_point_at_the_site(tmp_path: Pat
     assert "[a](https://example.com/loom/llms.txt)" in out
     assert "[b](https://example.com/loom/llms-install.md)" in out
     assert "[c](https://github.com/ClickHouse/loom/blob/main/README.md)" in out
+
+
+def test_the_pages_named_for_llms_full_and_the_sidebar_exist() -> None:
+    from scripts.codegen.page_summary import LEAD_PAGES
+
+    docs = ROOT / "docs"
+    for entry in (*hooks._FULL_FIRST, *hooks._FULL_LAST, *LEAD_PAGES):
+        # A renamed page would otherwise fall back to the default position unnoticed.
+        assert (docs / entry).is_dir() if entry.endswith("/") else (docs / entry).is_file(), entry

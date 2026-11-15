@@ -106,7 +106,13 @@ def test_llms_txt_puts_install_faq_and_contributor_pages_where_readers_expect() 
     sections = [line for line in text.splitlines() if line.startswith("## ")]
     # Contributor pages are last, in the section the llms.txt format lets a reader skip.
     assert sections[-1] == "## Optional"
-    assert sections[-2] == "## FAQ and glossary"
+    # What Loom is for leads: an agent that cuts the file short still reads it.
+    assert sections[:4] == [
+        "## Getting started",
+        "## Use cases",
+        "## FAQ and glossary",
+        "## Concepts",
+    ]
     assert "## Development" not in sections
     getting_started = text.split("## Getting started\n", 1)[1].split("\n## ", 1)[0]
     entries = [line for line in getting_started.splitlines() if line.startswith("- [")]
