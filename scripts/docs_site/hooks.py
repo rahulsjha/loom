@@ -252,12 +252,15 @@ def on_post_build(config):
     install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
     # Links resolve from the file's own place: the repository root, one level above docs/.
     install = _rewrite_links(install, "../llms-install.md", url, to_site=True)
-    # Its links to the site's HTML pages go to their Markdown copies, as llms.txt's do.
-    install = re.sub(
+    # Past its title and opening paragraph (addressed to people, who want the HTML pages),
+    # its links to site pages go to their Markdown copies, as llms.txt's do.
+    title, opening, steps = install.split("\n\n", 2)
+    steps = re.sub(
         rf"\]\({re.escape(url)}([\w./-]+)/(#[^)\s]*)?\)",
         lambda m: f"]({url}{m.group(1)}.md{m.group(2) or ''})",
-        install,
+        steps,
     )
+    install = f"{title}\n\n{opening}\n\n{steps}"
     (site / "llms-install.md").write_text(install, encoding="utf-8")
 
     # The title and summary quote of llms.txt open llms-full.txt too.

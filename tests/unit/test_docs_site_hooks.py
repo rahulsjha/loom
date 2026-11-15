@@ -240,7 +240,8 @@ def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
         "## Optional\n\n- [CLI](docs/reference/cli.md): Every command.\n"
     )
     (root / "llms-install.md").write_text(
-        "# Install\n\nSee [quickstart](docs/getting-started/quickstart.md), "
+        "# Install\n\nPeople read [the site](https://example.com/loom/getting-started/quickstart/)."
+        "\n\nSee [quickstart](docs/getting-started/quickstart.md), "
         "[clients](https://example.com/loom/features/clients/#cursor) and "
         "[the installer](install.sh).\n"
     )
@@ -293,6 +294,8 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     assert "[the installer](https://github.com/ClickHouse/loom/blob/main/install.sh)" in install
     # A link to a site page goes to its Markdown copy, as in llms.txt.
     assert f"[clients]({url}features/clients.md#cursor)" in install
+    # The opening paragraph is for people and keeps the HTML page.
+    assert f"[the site]({url}getting-started/quickstart/)" in install
 
     full = (site / "llms-full.txt").read_text()
     assert full.startswith("# ClickHouse Loom\n\n> Summary.\n\n")

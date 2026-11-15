@@ -440,11 +440,9 @@ def render_llms_txt() -> str:
             out.append(f"- [{title}](llms-install.md)" + (f": {outcome}" if outcome else ""))
         out.append("")
 
-    # What Loom is for comes first: the use cases, then the FAQ (worded closest to the
-    # questions people ask), the glossary and the concepts, then the rest. Development pages
-    # help contributors, not a reader deciding on or using Loom: the llms.txt format's
-    # Optional section, last, is the one a reader may skip.
-    titles = dict((sub, heading) for heading, sub in SECTIONS)
+    # Getting started, use cases, FAQ and glossary, concepts, then the rest; Development last,
+    # as the Optional section the llms.txt format lets a reader skip.
+    titles = {sub: heading for heading, sub in SECTIONS}
     for sub in ("getting-started", "use-cases"):
         section(titles[sub], sub)
     out.append("## FAQ and glossary\n")

@@ -11,9 +11,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-# The docs sections in reading order, as (title, folder under docs/): llms.txt lists them
-# in this order (Development last, as its Optional section) and the documentation site's
-# sidebar follows it.
+# The docs sections, as (title, folder under docs/), in the documentation site's sidebar
+# order; llms.txt picks its own lead order from them (scripts/codegen/docs_reference.py).
 SECTIONS = (
     ("Getting started", "getting-started"),
     ("Use cases", "use-cases"),
