@@ -1,0 +1,14 @@
+### main: is DiffView covered by any test today?
+No test files found, exiting with code 1
+
+### b626 with a deliberate bug (removed lines marked + instead of −): the new test catches it
+     × marks a removed line with − and an added one with +, in the order they occur 23ms
+     × renders an empty version on either side 6ms
+- Expected
++ Received
+- Expected
++ Received
+      Tests  2 failed | 3 passed (5)
+
+### MemoryInspector.history.test.tsx, the only other test near DiffView, stays green with the bug:
+      Tests  1 passed (1)
