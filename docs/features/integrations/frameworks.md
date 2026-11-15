@@ -20,6 +20,7 @@ or needs another database, vector store or cache.
 | CrewAI                         | `LoomCrewMemory`                                | Python, `loom.integrations.crewai`                        | `crewai.memory.Memory`                                   |
 | AutoGen                        | `LoomMemory`                                    | Python, `loom.integrations.autogen`                       | `autogen_core.memory.Memory`                             |
 | AG2                            | `LoomRecallPolicy`, `loom_tools`                | Python, `loom.integrations.ag2`                           | `ag2.assembly.AssemblyPolicy`, `tool()` from `ag2.tools` |
+| Google ADK                     | `LoomMemoryService`                             | Python, `loom.integrations.google_adk`                    | `google.adk.memory.BaseMemoryService`                    |
 | Pydantic AI                    | `loom_toolset`                                  | Python, `loom.integrations.pydantic_ai`                   | `FunctionToolset`                                        |
 | Mastra                         | `loomTools`                                     | TypeScript, `@clickhouse/loom/integrations/mastra`        | `createTool` from `@mastra/core`                         |
 | AI SDK                         | `loomTools`                                     | TypeScript, `@clickhouse/loom/integrations/ai-sdk`        | `tool()` from `ai`                                       |
@@ -342,6 +343,64 @@ trimming policy (`SlidingWindowPolicy`, `TokenBudgetPolicy`), which can cut the 
 request out of the events the policy reads. Those policies trim events, not the prompt, so
 `top_k` is what bounds the memory block.
 
+## Google ADK
+
+`LoomMemoryService` implements ADK's `BaseMemoryService`, which a `Runner` takes as
+`memory_service=`. ADK's own memory tools read it: `preload_memory` searches with the
+user's message before each model call and adds the matches to the prompt, and
+`load_memory` lets the model search. A callback saves a session or a turn. Install with
+`pip install 'clickhouse-loom[google-adk]'` (`google-adk` 2.14 or later 2.x).
+
+```python
+from google.adk.agents import LlmAgent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.adk.tools import preload_memory
+from loom import Agent
+from loom.integrations.google_adk import LoomMemoryService
+
+
+async def save_session(callback_context):
+    await callback_context.add_session_to_memory()
+
+
+async with Agent(org="acme", namespace="support") as loom_agent:
+    runner = Runner(
+        app_name="support",
+        agent=LlmAgent(
+            name="assistant",
+            model="gemini-flash-latest",
+            tools=[preload_memory],
+            after_agent_callback=save_session,
+        ),
+        session_service=InMemorySessionService(),
+        memory_service=LoomMemoryService(loom_agent),
+    )
+```
+
+ADK scopes memory by app and user. The app name is the Loom `agent` of every write and
+narrows every search, and the ADK user is the Loom `user_id`; a search reads every session
+of that user. The namespace comes from the Loom agent.
+
+| ADK                     | Loom                                                                                                                                                                                                                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_session_to_memory` | the text of the session's events, without the ones a rewind took back, sent to `memory.set_from_messages` with the session id; Loom extracts the facts and resolves duplicates and conflicts. A session added again is extracted again, so a callback that runs every turn should save that turn's events |
+| `add_events_to_memory`  | the same for the events given, such as the latest turn                                                                                                                                                                                                                                                    |
+| `add_memory`            | one `memory.set` per entry under `adk/<first 20 hex of sha256(text)>`, its `timestamp` as the memory's `valid_at`                                                                                                                                                                                         |
+| `search_memory`         | `memory.search` of the namespace it writes to; with `honour_abstain`, leaves out memories below Loom's floor and returns nothing when Loom abstains; each entry's `custom_metadata` carries `similarity` and `source`, and its `timestamp` is `valid_at` when the row has one                             |
+| `delete_memory`         | `memory.delete` of the entry's `id`: the memory's key, or for a verbatim chunk the key of the memory it was written under. A session summary has no `id`; [erasure](../memory/retention-and-erasure.md) removes it                                                                                        |
+
+Events keep their text parts only: the model's thoughts and tool calls and results are not
+sent, and neither is `custom_metadata`.
+
+| `LoomMemoryService` argument | Default  | Effect                                                                                         |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `agent`                      | required | the `loom.Agent` the service calls; ADK awaits its memory service, so a `SyncAgent` is refused |
+| `top_k`                      | 10       | memories per search, from 1 to 500                                                             |
+| `honour_abstain`             | `True`   | leave out memories below Loom's floor; nothing when Loom abstains                              |
+| `defer`                      | `True`   | queue the extraction on the server instead of waiting for it                                   |
+| `key_prefix`                 | `adk`    | the prefix of `add_memory`'s keys                                                              |
+
 ## Pydantic AI
 
 Pydantic AI extends an agent through tools and toolsets. `loom_toolset` returns Loom's
@@ -550,6 +609,9 @@ client can speak for several agents.
   silent.
 - **An AG2 turn fails when Loom is unreachable.** `LoomRecallPolicy` runs before each
   model call of the turn, and `AssemblerMiddleware` does not catch a policy's error.
+- **ADK carries on without memory when `preload_memory`'s search fails.** It logs a
+  warning and the model call goes on; a failed `load_memory` search or save callback fails
+  the run.
 - **An AutoGen turn fails when Loom is unreachable.** `AssistantAgent` calls
   `update_context` once per turn, before its first model call, and does not catch its
   errors.
