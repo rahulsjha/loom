@@ -119,11 +119,11 @@ def _top_key(item) -> tuple[int, str]:
     return (_SECTION_RANK.get(_folder(item), len(SECTIONS)), str(item.title))
 
 
-def _child_key(item) -> tuple[int, int, str, int, int, str]:
-    """Inside a section: its pages in `page_key` order, then subsections."""
+def _child_key(item) -> tuple[int, object]:
+    """Inside a section: its pages in `page_key` order, then subsections by title."""
     if not item.is_page:
-        return (1, 0, "", 0, 0, str(item.title))
-    return page_key(item.file.src_uri)
+        return (1, str(item.title))
+    return (0, page_key(item.file.src_uri))
 
 
 def _pages(items) -> list:
@@ -188,14 +188,21 @@ def on_post_build(config):
     site = Path(config["site_dir"])
     url = config["site_url"]
     docs = ROOT / "docs"
+    copies: dict[str, str] = {}
     for src in sorted(docs.rglob("*.md")):
         uri = src.relative_to(docs).as_posix()
         # Links are absolute, so the same text serves both places the copy lives: beside
         # the page (llms.txt and the page's <link> name it) and at the page URL plus
         # index.html.md, where the llms.txt format looks for a page's Markdown.
         body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, to_site=True)
-        text = _with_source(body, url, uri)
-        for out in (site / uri, site / _html_url("", uri) / "index.html.md"):
+        text = copies[uri] = _with_source(body, url, uri)
+        places = [site / uri, site / _html_url("", uri) / "index.html.md"]
+        # A section index is also at its URL with the slash swapped for `.md`
+        # (`use-cases/` -> `use-cases.md`), where agents guess a page's Markdown.
+        folder = uri[: -len("/index.md")] if uri.endswith("/index.md") else ""
+        if folder and not (docs / f"{folder}.md").exists():
+            places.append(site / f"{folder}.md")
+        for out in places:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text, encoding="utf-8")
 
@@ -227,8 +234,5 @@ def on_post_build(config):
     ]
     pages = [p for folder in _FULL_SECTIONS for p in _reading_order(docs, folder)]
     for src in pages + [docs / name for name in _FULL_PAGES]:
-        uri = src.relative_to(docs).as_posix()
-        # One file holds every page, so a link between them names the page's own file.
-        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, to_site=True)
-        parts.append(_with_source(body, url, uri))
+        parts.append(copies[src.relative_to(docs).as_posix()])
     (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")

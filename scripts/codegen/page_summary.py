@@ -27,18 +27,18 @@ SECTIONS = (
     ("Development", "development"),
 )
 
-# The pages that open their section, in this order, after its index: llms.txt lists them
-# so and the documentation site's sidebar follows it.
+# The pages that open their section, after its index: llms.txt and the documentation
+# site's sidebar list them in this order.
 LEAD_PAGES = ("getting-started/overview.md", "getting-started/quickstart.md")
 
 
-def page_key(uri: str) -> tuple[int, int, str, int, int, str]:
+def page_key(uri: str) -> tuple[int, str, int, int, str]:
     """Where the page at `uri` (relative to docs/) sits in its section, the folder `uri`
     starts with: the section's own pages, then each subsection's, by folder; within a
     folder, its index page, the lead pages, then the rest, by path."""
     sub, _, name = uri.partition("/")[2].rpartition("/")
     lead = LEAD_PAGES.index(uri) if uri in LEAD_PAGES else len(LEAD_PAGES)
-    return (0, int(bool(sub)), sub, int(name != "index.md"), lead, uri)
+    return (int(bool(sub)), sub, int(name != "index.md"), lead, uri)
 
 
 def shorten(text: str, limit: int) -> str:

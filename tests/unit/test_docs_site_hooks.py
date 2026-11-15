@@ -261,6 +261,8 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     overview = (site / "getting-started/overview.md").read_text()
     assert overview == (site / "getting-started/overview/index.html.md").read_text()
     assert (site / "use-cases/index.html.md").exists()
+    # A section index is also at its URL with the slash swapped for `.md`.
+    assert (site / "use-cases.md").read_text() == (site / "use-cases/index.md").read_text()
     # The title stays first; the line naming the HTML page is quoted under it.
     assert overview.startswith(
         f"# Overview\n\n> Source: {url}getting-started/overview/ (Markdown: "

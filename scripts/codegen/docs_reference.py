@@ -434,10 +434,10 @@ def render_llms_txt() -> str:
             title, outcome = page_summary(p)
             rel = p.relative_to(ROOT).as_posix()
             out.append(f"- [{title}]({rel})" + (f": {outcome}" if outcome else ""))
-            if rel == "docs/getting-started/agent-setup.md":
-                # The other install route, for clients without a Loom plugin.
-                title, outcome = page_summary(ROOT / "llms-install.md")
-                out.append(f"- [{title}](llms-install.md): {outcome}")
+        if sub == "getting-started":
+            # The other install route, for clients without a Loom plugin, closes the section.
+            title, outcome = page_summary(ROOT / "llms-install.md")
+            out.append(f"- [{title}](llms-install.md): {outcome}")
         out.append("")
 
     # Development pages help contributors, not a reader deciding on or using Loom: the
