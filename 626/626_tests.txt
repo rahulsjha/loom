@@ -1,0 +1,12 @@
+
+ RUN  v4.1.12 /w/b626
+
+ ✓ src/components/DiffView.test.tsx (4 tests) 74ms
+ ✓ src/components/MemoryInspector.history.test.tsx (1 test) 524ms
+     ✓ compares a version with its own memory's previous version, not the adjacent row  522ms
+
+ Test Files  2 passed (2)
+      Tests  5 passed (5)
+   Start at  17:53:36
+   Duration  4.44s (transform 2.27s, setup 382ms, import 2.89s, tests 598ms, environment 1.66s)
+

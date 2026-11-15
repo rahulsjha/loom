@@ -1,0 +1,18 @@
+
+ RUN  v4.1.12 /w/b627
+
+ ✓ src/views/SourcesList.test.tsx (3 tests) 470ms
+     ✓ shows a failed read's error and request id, and Retry reads the sources again  309ms
+ ✓ src/views/RepositoryCard.test.tsx (45 tests) 6884ms
+     ✓ folded: name and health on line 1, the muted summary on line 2, the split button; the body only once opened — and passes axe  738ms
+     ✓ not joined: Join joins the trunk directly; its menu offers each branch, Join all, Choose branches and maintainer access  600ms
+     ✓ each row's menu: Open, Refresh and Leave on a branch you read; Join on an open one; Withdraw on a request  479ms
+     ✓ one link: says it with its counts; Link another offers the trackers listing the repository first and appends  559ms
+     ✓ marks a tracker the caller holds no admin grant on, and says a new link needs its admin  548ms
+     ✓ several links: the primary is marked and said; Make primary reorders, Unlink removes  329ms
+
+ Test Files  2 passed (2)
+      Tests  48 passed (48)
+   Start at  17:53:25
+   Duration  10.96s (transform 4.13s, setup 522ms, import 5.49s, tests 7.35s, environment 1.62s)
+

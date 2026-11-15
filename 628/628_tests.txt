@@ -1,0 +1,74 @@
+
+ RUN  v4.1.12 /w/b628
+
+ ✓ src/components/CopyButton.test.tsx (2 tests) 244ms
+stderr | src/views/Runs.detail.test.tsx > Runs page > asks run.list to fold runs with no memory activity, and refetches everything on the toggle
+Warning: The tag <search> is unrecognized in this browser. If you meant to render a React component, start its name with an uppercase letter.
+    at search
+    at ListToolbar (/w/b628/src/components/ui/ListToolbar.tsx:9:24)
+    at div
+    at PageContainer (/w/b628/src/layout/PageContainer.tsx:3:26)
+    at Runs (/w/b628/src/views/Runs.tsx:541:58)
+    at Provider (file:///w/main/node_modules/@radix-ui/react-context/dist/index.mjs:38:15)
+    at TooltipProvider (file:///w/main/node_modules/@radix-ui/react-tooltip/dist/index.mjs:32:5)
+    at wrapper (/w/b628/src/test/rtl.tsx:9:22)
+
+stderr | src/views/Runs.table.test.tsx > Runs table > opens no tooltip on a goal shown in full
+Warning: The tag <search> is unrecognized in this browser. If you meant to render a React component, start its name with an uppercase letter.
+    at search
+    at ListToolbar (/w/b628/src/components/ui/ListToolbar.tsx:9:24)
+    at div
+    at PageContainer (/w/b628/src/layout/PageContainer.tsx:3:26)
+    at Runs (/w/b628/src/views/Runs.tsx:541:58)
+    at Provider (file:///w/main/node_modules/@radix-ui/react-context/dist/index.mjs:38:15)
+    at TooltipProvider (file:///w/main/node_modules/@radix-ui/react-tooltip/dist/index.mjs:32:5)
+    at wrapper (/w/b628/src/test/rtl.tsx:9:22)
+
+stderr | src/views/Runs.paging.test.tsx > Runs paging, sorting and search on the server > asks for one page, and keeps the first page's total on the next
+Warning: The tag <search> is unrecognized in this browser. If you meant to render a React component, start its name with an uppercase letter.
+    at search
+    at ListToolbar (/w/b628/src/components/ui/ListToolbar.tsx:9:24)
+    at div
+    at PageContainer (/w/b628/src/layout/PageContainer.tsx:3:26)
+    at Runs (/w/b628/src/views/Runs.tsx:541:58)
+    at Provider (file:///w/main/node_modules/@radix-ui/react-context/dist/index.mjs:38:15)
+    at TooltipProvider (file:///w/main/node_modules/@radix-ui/react-tooltip/dist/index.mjs:32:5)
+    at wrapper (/w/b628/src/test/rtl.tsx:9:22)
+
+ ✓ src/views/Runs.table.test.tsx (6 tests) 2602ms
+     ✓ opens no tooltip on a goal shown in full  896ms
+     ✓ shows a cut goal in a tooltip, without reading it twice  605ms
+     ✓ grouped by session, is one tab stop and ArrowDown moves to the next run  320ms
+ ✓ src/views/Runs.detail.test.tsx (20 tests) 4059ms
+     ✓ asks run.list to fold runs with no memory activity, and refetches everything on the toggle  494ms
+     ✓ filters by agent through run.list  340ms
+     ✓ the replay of a hollow run says what each empty field would have needed  424ms
+     ✓ copies the whole run id and session id, though the dialog shows them cut  312ms
+ ✓ src/views/Runs.paging.test.tsx (29 tests) 31467ms
+     ✓ asks for one page, and keeps the first page's total on the next  3525ms
+     ✓ counts no matches until the search's own read answers  731ms
+     ✓ asks for the page size picked  386ms
+     ✓ against a server that does not page, pages, searches and sorts its newest runs here  2059ms
+     ✓ asks another namespace for its first page, for every agent, in its first read  2767ms
+     ✓ sends the search to the server after 250 ms and starts again from page 1  2116ms
+     ✓ sorts by a column header, one sort at a time, and says so on the header  2467ms
+     ✓ sends the status filter and starts again from page 1  2003ms
+     ✓ keeps the rows on screen, marked busy, while the next page loads  1203ms
+     ✓ has no summary line beside the toggles  414ms
+     ✓ says no run matches the search, with a way to clear it  441ms
+     ✓ with every run shown, says no run matches the words  385ms
+     ✓ with a status picked too, says the filters in force match nothing, not the words  403ms
+     ✓ does not say a new search matches nothing before its answer lands  674ms
+     ✓ settles on a mixed fleet, whose answers alternate between no total and a total  1125ms
+     ✓ shows the loader, no rows and no count while it switches to the local mode  843ms
+     ✓ offers only the pages run.list can serve when it counts more  646ms
+     ✓ steps back to the last page when the next page's read finds it gone  1339ms
+     ✓ starts again from page 1 when the page size changes on a later page  4271ms
+     ✓ pages nowhere while a new filter's first page is read  1266ms
+     ✓ says no runs match a search in local mode entered from a later page  1602ms
+
+ Test Files  4 passed (4)
+      Tests  57 passed (57)
+   Start at  17:52:47
+   Duration  36.45s (transform 8.53s, setup 1.21s, import 11.41s, tests 38.37s, environment 5.48s)
+

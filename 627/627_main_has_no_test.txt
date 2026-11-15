@@ -1,0 +1,5 @@
+
+filter: src/views/SourcesList.test.tsx
+include: src/**/*.test.{ts,tsx}
+exclude:  e2e/**, node_modules/**, dist/**
+
