@@ -63,6 +63,7 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Code operations](docs/features/code-index/operations.md): This page maps questions to `code.*` ops.
 - [Code index](docs/features/code-index/overview.md): The code workers are off by default; a deployment turns them on per repository (repositories).
 - [Adding repositories](docs/features/code-index/repositories.md): A fresh install indexes no repository.
+- [Integrations](docs/features/integrations/index.md): Loom on a bare ClickHouse service is a complete deployment.
 - [Agent instructions](docs/features/integrations/agent-instructions.md): A short block in an agent's instruction file tells it when to load Loom's context, save a fact and use the code index instead of grepping or reading files.
 - [Agent Substrate](docs/features/integrations/agent-substrate.md): Needs Agent Substrate v1.0.0 and Loom's Helm chart in one Kubernetes cluster: Substrate's egress gateway adds each agent's Loom token to its MCP calls.
 - [Claude Code plugin](docs/features/integrations/claude-code.md): The `loom` plugin for Claude Code does three things in one install:
@@ -71,7 +72,6 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Cursor](docs/features/integrations/cursor.md): Cursor gets Loom in two independent pieces:
 - [Agent frameworks and orchestrators](docs/features/integrations/frameworks.md): The SDKs ship adapters that present Loom through a framework's own memory or retrieval interface.
 - [The grep shim](docs/features/integrations/grep-shim.md): Needs Node 18 or later, a viewer token, and a repository in the code index.
-- [Integrations](docs/features/integrations/index.md): Loom on a bare ClickHouse service is a complete deployment.
 - [Langfuse](docs/features/integrations/langfuse.md): Needs `LOOM_LANGFUSE_URL` and `LOOM_LANGFUSE_ADMIN_TOKEN`; nothing is sent until both are set.
 - [LibreChat](docs/features/integrations/librechat.md): Needs LibreChat v0.8.8 (MIT), a Loom server that serves the assistant toolset, and one Loom `viewer` token per person.
 - [Connecting an MCP client](docs/features/integrations/mcp-clients.md): Loom serves its operations as MCP tools at `<loom>/mcp`.

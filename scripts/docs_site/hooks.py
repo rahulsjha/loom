@@ -64,16 +64,16 @@ def on_page_markdown(markdown, page, config, files):
         page.meta["description"] = html.escape(description)
     if _WHOLLY_GENERATED.search(markdown):
         page.edit_url = None
-    return _rewrite_links(markdown, page.file.src_uri, config["site_url"], pages=False)
+    return _rewrite_links(markdown, page.file.src_uri, config["site_url"], to_site=False)
 
 
 # Files at the repository root that the site serves itself (on_post_build).
 _SITE_FILES = ("llms.txt", "llms-install.md")
 
 
-def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, pages: bool) -> str:
+def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, to_site: bool) -> str:
     """`markdown` of the docs/ file at `src_uri` with its links to the site's root files on
-    `site_url`, other links that leave docs/ on GitHub, and, if `pages`, links to other
+    `site_url`, other links that leave docs/ on GitHub, and, if `to_site`, links to other
     pages on the site's Markdown copies (otherwise left relative)."""
     page_dir = posixpath.dirname("docs/" + src_uri)
 
@@ -90,7 +90,7 @@ def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, pages: bool) -
             posixpath.join(page_dir, target or posixpath.basename(src_uri))
         )
         if resolved.startswith("docs/"):
-            if not pages:
+            if not to_site:
                 return m.group(0)
             base, resolved = site_url, resolved[len("docs/") :]
         elif resolved in _SITE_FILES:
@@ -119,10 +119,10 @@ def _top_key(item) -> tuple[int, str]:
     return (_SECTION_RANK.get(_folder(item), len(SECTIONS)), str(item.title))
 
 
-def _child_key(item) -> tuple[int, int, int, str]:
+def _child_key(item) -> tuple[int, int, str, int, int, str]:
     """Inside a section: its pages in `page_key` order, then subsections."""
     if not item.is_page:
-        return (1, 0, 0, str(item.title))
+        return (1, 0, "", 0, 0, str(item.title))
     return page_key(item.file.src_uri)
 
 
@@ -193,7 +193,7 @@ def on_post_build(config):
         # Links are absolute, so the same text serves both places the copy lives: beside
         # the page (llms.txt and the page's <link> name it) and at the page URL plus
         # index.html.md, where the llms.txt format looks for a page's Markdown.
-        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, pages=True)
+        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, to_site=True)
         text = _with_source(body, url, uri)
         for out in (site / uri, site / _html_url("", uri) / "index.html.md"):
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -216,7 +216,7 @@ def on_post_build(config):
     install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
     # Links resolve from the file's own place: the repository root, one level above docs/.
     (site / "llms-install.md").write_text(
-        _rewrite_links(install, "../llms-install.md", url, pages=True), encoding="utf-8"
+        _rewrite_links(install, "../llms-install.md", url, to_site=True), encoding="utf-8"
     )
 
     # The title and summary quote of llms.txt open llms-full.txt too.
@@ -229,6 +229,6 @@ def on_post_build(config):
     for src in pages + [docs / name for name in _FULL_PAGES]:
         uri = src.relative_to(docs).as_posix()
         # One file holds every page, so a link between them names the page's own file.
-        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, pages=True)
+        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, to_site=True)
         parts.append(_with_source(body, url, uri))
     (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")
