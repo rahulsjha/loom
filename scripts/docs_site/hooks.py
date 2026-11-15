@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from scripts.codegen.page_summary import LEAD_PAGES, SECTIONS, page_summary, shorten  # noqa: E402
+from scripts.codegen.page_summary import SECTIONS, page_key, page_summary, shorten  # noqa: E402
 
 BLOB = "https://github.com/ClickHouse/loom/blob/main/"
 RAW = "https://raw.githubusercontent.com/ClickHouse/loom/main/"
@@ -43,7 +43,7 @@ _WHOLLY_GENERATED = re.compile(
 _TOKEN = re.compile(
     r"(?P<fence>^[ \t]*(?P<mark>`{3,}|~{3,})[^\n]*\n.*?^[ \t]*(?P=mark)[ \t]*$)"
     r"|(?P<link>(?P<bang>!?)(?P<text>\[(?:`[^`\n]*`|!(?!\[)|[^\]`!])*\]\()"
-    r"(?P<target>[^)\s#]+)(?P<anchor>#[^)\s]*)?(?P<tail>(?:\s+\"[^\"]*\")?\)))"
+    r"(?P<target>[^)\s#]*)(?P<anchor>#[^)\s]*)?(?P<tail>(?:\s+\"[^\"]*\")?\)))"
     r"|(?P<code>``(?:[^`]|`(?!`))+?``|`(?:[^`\n]|\n(?![ \t]*\n))+`)",
     re.DOTALL | re.MULTILINE,
 )
@@ -81,9 +81,14 @@ def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, pages: bool) -
         if not m.group("link"):
             return m.group(0)
         target = m.group("target")
+        if not target and not m.group("anchor"):
+            return m.group(0)
         if "://" in target or target.startswith(("mailto:", "/")):
             return m.group(0)
-        resolved = posixpath.normpath(posixpath.join(page_dir, target))
+        # A heading on the same page (`#anchor`) resolves to the page itself.
+        resolved = posixpath.normpath(
+            posixpath.join(page_dir, target or posixpath.basename(src_uri))
+        )
         if resolved.startswith("docs/"):
             if not pages:
                 return m.group(0)
@@ -99,7 +104,6 @@ def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, pages: bool) -
 
 
 _SECTION_RANK = {folder: rank for rank, (_title, folder) in enumerate(SECTIONS)}
-_FIRST_PAGES = LEAD_PAGES
 
 
 def _folder(section) -> str:
@@ -108,27 +112,18 @@ def _folder(section) -> str:
 
 
 def _top_key(item) -> tuple[int, str]:
-    """The home page, then the sections in llms.txt's order, then loose pages (FAQ, glossary)."""
+    """The home page, then the sections in `SECTIONS` order, then loose pages (FAQ, glossary)."""
     if item.is_page:
         uri = item.file.src_uri
         return (-1, uri) if uri == "index.md" else (len(SECTIONS) + 1, uri)
     return (_SECTION_RANK.get(_folder(item), len(SECTIONS)), str(item.title))
 
 
-def _page_key(uri: str) -> tuple[int, int, str]:
-    """A page's place in its section: the index page, the lead pages, then the others."""
-    if uri.endswith("/index.md"):
-        return (0, 0, uri)
-    if uri in _FIRST_PAGES:
-        return (0, 1 + _FIRST_PAGES.index(uri), uri)
-    return (0, 1 + len(_FIRST_PAGES), uri)
-
-
-def _child_key(item) -> tuple[int, int, str]:
-    """Inside a section: its pages in `_page_key` order, then subsections."""
+def _child_key(item) -> tuple[int, int, int, str]:
+    """Inside a section: its pages in `page_key` order, then subsections."""
     if not item.is_page:
-        return (1, 0, str(item.title))
-    return _page_key(item.file.src_uri)
+        return (1, 0, 0, str(item.title))
+    return page_key(item.file.src_uri)
 
 
 def _pages(items) -> list:
@@ -179,13 +174,13 @@ def _with_source(body: str, site_url: str, uri: str) -> str:
     title, nl, rest = body.partition("\n")
     if not title.startswith("# "):
         return f"{source}\n\n{body}\n"
-    return f"{title}\n\n{source}\n{nl}{rest}\n"
+    return f"{title}\n\n{source}\n{rest}\n"
 
 
 def _reading_order(docs: Path, folder: str) -> list[Path]:
     """A section's own pages in the sidebar's order (its subsections are left out)."""
     return sorted(
-        (docs / folder).glob("*.md"), key=lambda p: _page_key(p.relative_to(docs).as_posix())
+        (docs / folder).glob("*.md"), key=lambda p: page_key(p.relative_to(docs).as_posix())
     )
 
 
@@ -211,7 +206,7 @@ def on_post_build(config):
     llms = _ROOT_INSTALL.sub(f"]({url}llms-install.md)", llms)
     head, sep, rest = llms.partition("\n\n## ")
     names = [title for title, folder in SECTIONS if folder in _FULL_SECTIONS]
-    holds = f"{', '.join(names)} pages, the FAQ and the glossary"
+    holds = f"{', '.join(names[:-1])} and {names[-1]} pages, the FAQ and the glossary"
     head += f" The full text of the {holds} is in one file: [llms-full.txt]({url}llms-full.txt)."
     full = f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): The {holds}, in one file.\n\n"
     body, opt, optional = rest.partition("## Optional\n")
@@ -228,7 +223,7 @@ def on_post_build(config):
     intro = head.split("\n\n")[:2]
     parts = [
         "\n\n".join(intro)
-        + f"\n\nThis file holds the {holds} in full; {url}llms.txt lists every page.\n"
+        + f"\n\nThis file holds the {holds} in full; {url}llms.txt indexes every page.\n"
     ]
     pages = [p for folder in _FULL_SECTIONS for p in _reading_order(docs, folder)]
     for src in pages + [docs / name for name in _FULL_PAGES]:

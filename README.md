@@ -289,6 +289,7 @@ For shared agent context, code intelligence and permissioned retrieval, start wi
 
 [Deployment](./docs/operations/deployment.md) · [FAQ](./docs/faq.md) ·
 [Contributing](./CONTRIBUTING.md) · [Security reporting](./SECURITY.md) ·
-[`llms.txt`](./llms.txt)
+[`llms.txt`](https://clickhouse.github.io/loom/llms.txt) ·
+[`llms-full.txt`](https://clickhouse.github.io/loom/llms-full.txt)
 
 Apache-2.0 · [License](./LICENSE) · [Notice](./NOTICE)

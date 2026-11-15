@@ -6,10 +6,10 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 
 ## Getting started
 
-- [Install Loom for any MCP client](llms-install.md): The steps a coding agent follows to install Loom for Cline or another MCP client and check it.
 - [Overview](docs/getting-started/overview.md): Loom is a server that stores memory, documents, conversations, an entity graph and a code index for AI agents, as rows in ClickHouse, with Postgres as an option for live memory and knowledge state.
 - [Quickstart](docs/getting-started/quickstart.md): This page boots Loom on a laptop and saves a first memory over HTTP, Python and MCP.
 - [Set up Loom with your coding agent](docs/getting-started/agent-setup.md): This page is for a coding agent, Claude Code or Codex, asked to install Loom on the machine it runs on and to prove that the install works.
+- [Install Loom as an MCP server](llms-install.md): This file is for a coding agent asked to set Loom up as an MCP server for its user.
 - [Connect a coding agent](docs/getting-started/connect-a-coding-agent.md): This page connects Claude Code, Codex, Cursor or another MCP client to a running Loom server.
 - [Evaluate Loom](docs/getting-started/evaluate.md): Evaluate the decision you need to make, not every harness in the repository.
 - [Your first agent](docs/getting-started/first-agent.md): This tutorial builds a small agent with the Python SDK.
@@ -50,14 +50,19 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 
 ## Features
 
+- [Conversations and sessions](docs/features/conversations-and-sessions.md): Loom keeps three kinds of session state, each in its own plane:
+- [The dashboard](docs/features/dashboard.md): The dashboard is a React single-page app the Loom server serves at its root URL.
+- [Entity graph](docs/features/entity-graph.md): Entity communities are off by default (`LOOM_ENTITY_COMMUNITIES_ENABLED`).
+- [Knowledge documents](docs/features/knowledge.md): A knowledge document is text an agent looks things up in: a runbook, a specification, a README.
+- [Namespaces and sharing](docs/features/namespaces-and-sharing.md): A namespace is the unit of isolation and sharing inside an org.
+- [Runs](docs/features/runs.md): A run is one execution of a task, such as "triage issue 1234".
+- [Tasks, decisions and policies](docs/features/tasks-and-decisions.md): Three planes sit beside memory for coordination between agents.
+- [Unified search and context packs](docs/features/unified-search.md): `loom_search` searches memory, profile, knowledge and past conversations across the caller's namespaces in one round trip.
 - [Code index freshness](docs/features/code-index/freshness.md): The index trails the repository: it indexes merged commits on a configured branch, pass by pass, and each tier advances its own watermark.
 - [History, PRs and releases](docs/features/code-index/history-and-prs.md): These ops need merged-PR history; the `code_pr_history` worker is off by default (`LOOM_CODE_PR_HISTORY_ENABLED`).
 - [Code operations](docs/features/code-index/operations.md): This page maps questions to `code.*` ops.
 - [Code index](docs/features/code-index/overview.md): The code workers are off by default; a deployment turns them on per repository (repositories).
 - [Adding repositories](docs/features/code-index/repositories.md): A fresh install indexes no repository.
-- [Conversations and sessions](docs/features/conversations-and-sessions.md): Loom keeps three kinds of session state, each in its own plane:
-- [The dashboard](docs/features/dashboard.md): The dashboard is a React single-page app the Loom server serves at its root URL.
-- [Entity graph](docs/features/entity-graph.md): Entity communities are off by default (`LOOM_ENTITY_COMMUNITIES_ENABLED`).
 - [Agent instructions](docs/features/integrations/agent-instructions.md): A short block in an agent's instruction file tells it when to load Loom's context, save a fact and use the code index instead of grepping or reading files.
 - [Agent Substrate](docs/features/integrations/agent-substrate.md): Needs Agent Substrate v1.0.0 and Loom's Helm chart in one Kubernetes cluster: Substrate's egress gateway adds each agent's Loom token to its MCP calls.
 - [Claude Code plugin](docs/features/integrations/claude-code.md): The `loom` plugin for Claude Code does three things in one install:
@@ -72,7 +77,6 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Connecting an MCP client](docs/features/integrations/mcp-clients.md): Loom serves its operations as MCP tools at `<loom>/mcp`.
 - [OKF bundles](docs/features/integrations/okf.md): A namespace can be rendered as an OKF (Open Knowledge Format) v0.2 bundle: one Markdown file per memory with YAML frontmatter, an `index.md` per directory listing each concept with a one-line description, and a `log.md` of changes.
 - [VS Code](docs/features/integrations/vscode.md): VS Code's agent mode (GitHub Copilot) connects to Loom as a remote MCP server over streamable HTTP.
-- [Knowledge documents](docs/features/knowledge.md): A knowledge document is text an agent looks things up in: a runbook, a specification, a README.
 - [Conflicts and refusal](docs/features/memory/conflicts-and-refusal.md): Every memory write is judged against the facts the namespace already holds.
 - [Extraction from transcripts](docs/features/memory/extraction.md): `memory.set_from_messages` takes a transcript and the server decides what in it is durable.
 - [History and provenance](docs/features/memory/history-and-provenance.md): Every write to memory makes a new version; nothing is edited in place.
@@ -81,15 +85,11 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Search and ask](docs/features/memory/search-and-ask.md): `memory.search` returns ranked hits for the agent to read.
 - [Working memory and profiles](docs/features/memory/working-memory-and-profiles.md): Two planes hold text an agent is given every time instead of finding it by search:
 - [Writing memory](docs/features/memory/writing.md): A memory is one claim stored under a key in a namespace.
-- [Namespaces and sharing](docs/features/namespaces-and-sharing.md): A namespace is the unit of isolation and sharing inside an org.
 - [Audit log](docs/features/observability/audit.md): Audit rows, the `audit_verifier` worker and the checkpoint chain are on by default.
 - [Cost and usage](docs/features/observability/cost-and-usage.md): Loom records every upstream dollar it spends on embedding and LLM calls against the operation that spent it, in the per-operation ledger `loom.agent_events`.
 - [Telemetry](docs/features/observability/telemetry.md): Loom reports on itself in three layers:
-- [Runs](docs/features/runs.md): A run is one execution of a task, such as "triage issue 1234".
-- [Tasks, decisions and policies](docs/features/tasks-and-decisions.md): Three planes sit beside memory for coordination between agents.
 - [Tracker plane](docs/features/tracker/overview.md): Nothing serves until `LOOM_TRACKER_ORG` is set and a source is registered.
 - [Tracker record contract](docs/features/tracker/record-contract.md): The `tracker.*` ops, and the tracker legs of `code.*` and `loom_search`, read a team's issues, pull requests and incidents live from the team's own ClickHouse with a read-only credential.
-- [Unified search and context packs](docs/features/unified-search.md): `loom_search` searches memory, profile, knowledge and past conversations across the caller's namespaces in one round trip.
 
 ## Reference
 

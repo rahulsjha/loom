@@ -48,9 +48,9 @@ if str(ROOT) not in sys.path:  # run as a file
 
 from scripts.codegen.common import write_atomic  # noqa: E402
 from scripts.codegen.page_summary import (  # noqa: E402
-    LEAD_PAGES,
     SECTIONS,
     first_sentence,
+    page_key,
     page_summary,
 )
 from scripts.codegen.sdk_py_admin_gen import render_admin_routes_table  # noqa: E402
@@ -421,25 +421,23 @@ def render_llms_txt() -> str:
     ]
 
     def section(heading: str, sub: str) -> None:
-        # A section's own index.md comes first, then its lead pages, the rest by path.
-        def order(p: Path) -> tuple[bool, int, Path]:
-            uri = p.relative_to(docs).as_posix()
-            lead = LEAD_PAGES.index(uri) if uri in LEAD_PAGES else len(LEAD_PAGES)
-            return (p != docs / sub / "index.md", lead, p)
-
-        pages = sorted((p for p in (docs / sub).rglob("*.md") if p.parent != GROUP_DIR), key=order)
+        # In the sidebar's order (page_key); the per-group operation pages are reached through
+        # docs/reference/operations.md.
+        pages = sorted(
+            (p for p in (docs / sub).rglob("*.md") if p.parent != GROUP_DIR),
+            key=lambda p: page_key(p.relative_to(docs).as_posix()),
+        )
         if not pages:
             return
         out.append(f"## {heading}\n")
-        if sub == "getting-started":
-            out.append(
-                "- [Install Loom for any MCP client](llms-install.md): The steps a coding "
-                "agent follows to install Loom for Cline or another MCP client and check it."
-            )
         for p in pages:
             title, outcome = page_summary(p)
             rel = p.relative_to(ROOT).as_posix()
             out.append(f"- [{title}]({rel})" + (f": {outcome}" if outcome else ""))
+            if rel == "docs/getting-started/agent-setup.md":
+                # The other install route, for clients without a Loom plugin.
+                title, outcome = page_summary(ROOT / "llms-install.md")
+                out.append(f"- [{title}](llms-install.md): {outcome}")
         out.append("")
 
     # Development pages help contributors, not a reader deciding on or using Loom: the

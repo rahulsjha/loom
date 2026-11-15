@@ -222,7 +222,7 @@ def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
             "# Overview\n\nLoom is a server. [Memory](../concepts/memory.md#keys), "
             "[the README](../../README.md), ![shot](../images/a.png).\n"
         ),
-        "getting-started/quickstart.md": "# Quickstart\n\nBoot it.\n",
+        "getting-started/quickstart.md": "# Quickstart\n\nBoot it. [Below](#boot).\n\n## Boot\n",
         "concepts/memory.md": "# Memory\n\nA memory is a row.\n",
         "use-cases/agent-memory.md": "# Agent memory\n\nMemory for agents.\n",
         "use-cases/index.md": "# Use cases\n\nOne page per need.\n",
@@ -274,7 +274,7 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
         .startswith(f"# Loom\n\n> Source: {url} (Markdown: {url}index.md)")
     )
 
-    holds = "Getting started, Use cases, Concepts pages, the FAQ and the glossary"
+    holds = "Getting started, Use cases and Concepts pages, the FAQ and the glossary"
     llms = (site / "llms.txt").read_text()
     assert f"Start with {url}index.md, or [install]({url}llms-install.md)." in llms
     assert "- [Overview](https://example.com/loom/getting-started/overview.md)" in llms
@@ -291,7 +291,7 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
 
     full = (site / "llms-full.txt").read_text()
     assert full.startswith("# ClickHouse Loom\n\n> Summary.\n\n")
-    assert f"{url}llms.txt lists every page" in full
+    assert f"{url}llms.txt indexes every page" in full
     assert f"This file holds the {holds} in full" in full
     sources = [line for line in full.splitlines() if line.startswith("> Source: ")]
     # The sidebar's order: a section's index, the lead pages, then the rest.
@@ -312,6 +312,9 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     assert f"[Memory]({url}concepts/memory.md#keys)" in full
     assert f"![shot]({url}images/a.png)" in full
     assert "Every command." not in full
+    # A heading on the same page names its page, since the file holds many pages.
+    assert f"[Below]({url}getting-started/quickstart.md#boot)" in full
+    assert "\n\n\n" not in overview
 
 
 def test_links_to_the_root_files_the_site_serves_point_at_the_site(tmp_path: Path) -> None:
