@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 
 # The docs sections in reading order, as (title, folder under docs/): llms.txt lists them
-# in this order and the documentation site's sidebar follows it.
+# in this order (Development last, as its Optional section) and the documentation site's
+# sidebar follows it.
 SECTIONS = (
     ("Getting started", "getting-started"),
     ("Use cases", "use-cases"),
@@ -25,6 +26,10 @@ SECTIONS = (
     ("Benchmarks", "benchmarks"),
     ("Development", "development"),
 )
+
+# The pages that open their section, in this order, after its index: llms.txt lists them
+# so and the documentation site's sidebar follows it.
+LEAD_PAGES = ("getting-started/overview.md", "getting-started/quickstart.md")
 
 
 def shorten(text: str, limit: int) -> str:

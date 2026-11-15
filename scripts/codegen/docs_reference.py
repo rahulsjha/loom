@@ -47,7 +47,12 @@ if str(ROOT) not in sys.path:  # run as a file
     sys.path.insert(0, str(ROOT))
 
 from scripts.codegen.common import write_atomic  # noqa: E402
-from scripts.codegen.page_summary import SECTIONS, first_sentence, page_summary  # noqa: E402
+from scripts.codegen.page_summary import (  # noqa: E402
+    LEAD_PAGES,
+    SECTIONS,
+    first_sentence,
+    page_summary,
+)
 from scripts.codegen.sdk_py_admin_gen import render_admin_routes_table  # noqa: E402
 from server.core.errors import (  # noqa: E402
     CLASS_BY_CODE,
@@ -416,17 +421,19 @@ def render_llms_txt() -> str:
     ]
 
     def section(heading: str, sub: str) -> None:
-        # A section's own index.md comes first, the rest by path.
-        pages = sorted(
-            (p for p in (docs / sub).rglob("*.md") if p.parent != GROUP_DIR),
-            key=lambda p: (p != docs / sub / "index.md", p),
-        )
+        # A section's own index.md comes first, then its lead pages, the rest by path.
+        def order(p: Path) -> tuple[bool, int, Path]:
+            uri = p.relative_to(docs).as_posix()
+            lead = LEAD_PAGES.index(uri) if uri in LEAD_PAGES else len(LEAD_PAGES)
+            return (p != docs / sub / "index.md", lead, p)
+
+        pages = sorted((p for p in (docs / sub).rglob("*.md") if p.parent != GROUP_DIR), key=order)
         if not pages:
             return
         out.append(f"## {heading}\n")
         if sub == "getting-started":
             out.append(
-                "- [Install Loom for any MCP client](llms-install.md): the steps a coding "
+                "- [Install Loom for any MCP client](llms-install.md): The steps a coding "
                 "agent follows to install Loom for Cline or another MCP client and check it."
             )
         for p in pages:

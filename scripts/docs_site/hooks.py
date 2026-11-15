@@ -6,9 +6,9 @@ Markdown link or image that leaves docs/ (source files, the README) points at th
 GitHub instead of a missing page, except the root files the site serves itself (`llms.txt`,
 `llms-install.md`), which point at the site; links in code blocks and code spans are left
 as written, and reference-style links are not rewritten (the docs use inline links). The
-sidebar follows llms.txt's section order, with Overview and Quickstart first in Getting
-started, and a generated page gets no edit button (its source is the generator, not the
-page).
+sidebar follows the sections' order in `SECTIONS`, the FAQ and glossary last, with Overview
+and Quickstart first in Getting started, and a generated page gets no edit button (its
+source is the generator, not the page).
 
 After the build, the site also serves what agents fetch instead of HTML: each page's
 Markdown beside it (`use-cases/agent-memory.md`) and at the page URL plus `index.html.md`,
@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from scripts.codegen.page_summary import SECTIONS, page_summary, shorten  # noqa: E402
+from scripts.codegen.page_summary import LEAD_PAGES, SECTIONS, page_summary, shorten  # noqa: E402
 
 BLOB = "https://github.com/ClickHouse/loom/blob/main/"
 RAW = "https://raw.githubusercontent.com/ClickHouse/loom/main/"
@@ -99,7 +99,7 @@ def _rewrite_links(markdown: str, src_uri: str, site_url: str, *, pages: bool) -
 
 
 _SECTION_RANK = {folder: rank for rank, (_title, folder) in enumerate(SECTIONS)}
-_FIRST_PAGES = ("getting-started/overview.md", "getting-started/quickstart.md")
+_FIRST_PAGES = LEAD_PAGES
 
 
 def _folder(section) -> str:
@@ -171,9 +171,15 @@ def _html_url(site_url: str, uri: str) -> str:
     return site_url + page
 
 
-def _source_line(site_url: str, uri: str) -> str:
-    """The line that names a copied page's HTML page, which a citation should point at."""
-    return f"Source: {_html_url(site_url, uri)} (Markdown: {site_url}{uri})"
+def _with_source(body: str, site_url: str, uri: str) -> str:
+    """A copied page with a quoted line under its title naming its HTML page, which a
+    citation should point at, so the title stays the first line."""
+    source = f"> Source: {_html_url(site_url, uri)} (Markdown: {site_url}{uri})"
+    body = body.strip()
+    title, nl, rest = body.partition("\n")
+    if not title.startswith("# "):
+        return f"{source}\n\n{body}\n"
+    return f"{title}\n\n{source}\n{nl}{rest}\n"
 
 
 def _reading_order(docs: Path, folder: str) -> list[Path]:
@@ -193,8 +199,8 @@ def on_post_build(config):
         # the page (llms.txt and the page's <link> name it) and at the page URL plus
         # index.html.md, where the llms.txt format looks for a page's Markdown.
         body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, pages=True)
-        text = f"{_source_line(url, uri)}\n\n{body.strip()}\n"
-        for out in {site / uri, site / _html_url("", uri) / "index.html.md"}:
+        text = _with_source(body, url, uri)
+        for out in (site / uri, site / _html_url("", uri) / "index.html.md"):
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text, encoding="utf-8")
 
@@ -204,10 +210,10 @@ def on_post_build(config):
     llms = _DOCS_PAGE.sub(lambda m: url + m.group(1), llms)
     llms = _ROOT_INSTALL.sub(f"]({url}llms-install.md)", llms)
     head, sep, rest = llms.partition("\n\n## ")
-    full = (
-        f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): the pages that say what Loom"
-        " is and how to start, in one file.\n\n"
-    )
+    names = [title for title, folder in SECTIONS if folder in _FULL_SECTIONS]
+    holds = f"{', '.join(names)} pages, the FAQ and the glossary"
+    head += f" The full text of the {holds} is in one file: [llms-full.txt]({url}llms-full.txt)."
+    full = f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): The {holds}, in one file.\n\n"
     body, opt, optional = rest.partition("## Optional\n")
     (site / "llms.txt").write_text(f"{head}{sep}{body}{full}{opt}{optional}", encoding="utf-8")
 
@@ -222,12 +228,12 @@ def on_post_build(config):
     intro = head.split("\n\n")[:2]
     parts = [
         "\n\n".join(intro)
-        + f"\n\nThis file holds some sections in full; {url}llms.txt lists every page.\n"
+        + f"\n\nThis file holds the {holds} in full; {url}llms.txt lists every page.\n"
     ]
     pages = [p for folder in _FULL_SECTIONS for p in _reading_order(docs, folder)]
     for src in pages + [docs / name for name in _FULL_PAGES]:
         uri = src.relative_to(docs).as_posix()
         # One file holds every page, so a link between them names the page's own file.
         body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url, pages=True)
-        parts.append(f"{_source_line(url, uri)}\n\n{body.strip()}\n")
+        parts.append(_with_source(body, url, uri))
     (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")

@@ -177,7 +177,7 @@ def test_the_sidebar_follows_the_section_order_with_index_and_overview_first() -
             ),
         ]
     )
-    hooks.on_nav(nav, _CONFIG, None)
+    hooks.on_nav(nav, None, None)
     order = [getattr(i, "title", None) or i.file.src_uri for i in nav.items]
     assert order == ["index.md", "Getting started", "Reference", "faq.md"]
     started = [c.file.src_uri for c in nav.items[1].children]
@@ -205,7 +205,7 @@ def test_previous_and_next_links_follow_the_sorted_sidebar() -> None:
         is_page=False, is_section=True, title="Getting started", children=[overview]
     )
     nav = SimpleNamespace(items=[faq, started, home], pages=[faq, overview, home])
-    hooks.on_nav(nav, _CONFIG, None)
+    hooks.on_nav(nav, None, None)
     assert nav.pages == [home, overview, faq]
     assert home.previous_page is None and home.next_page is overview
     assert overview.previous_page is home and overview.next_page is faq
@@ -253,7 +253,7 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
 ) -> None:
     root, site = _site_tree(tmp_path)
     monkeypatch.setattr(hooks, "ROOT", root)
-    url = "https://example.com/loom/"
+    url = _CONFIG["site_url"]
     hooks.on_post_build({"site_dir": str(site), "site_url": url})
 
     # Each page beside its HTML page and inside its folder, headed by its HTML URL, with
@@ -261,19 +261,28 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     overview = (site / "getting-started/overview.md").read_text()
     assert overview == (site / "getting-started/overview/index.html.md").read_text()
     assert (site / "use-cases/index.html.md").exists()
-    assert overview.startswith(f"Source: {url}getting-started/overview/ (Markdown: ")
+    # The title stays first; the line naming the HTML page is quoted under it.
+    assert overview.startswith(
+        f"# Overview\n\n> Source: {url}getting-started/overview/ (Markdown: "
+    )
     assert f"[Memory]({url}concepts/memory.md#keys)" in overview
     assert "[the README](https://github.com/ClickHouse/loom/blob/main/README.md)" in overview
     assert (site / "reference/operations/memory.md").exists()
-    assert (site / "index.md").read_text().startswith(f"Source: {url} (Markdown: {url}index.md)")
+    assert (
+        (site / "index.md")
+        .read_text()
+        .startswith(f"# Loom\n\n> Source: {url} (Markdown: {url}index.md)")
+    )
 
+    holds = "Getting started, Use cases, Concepts pages, the FAQ and the glossary"
     llms = (site / "llms.txt").read_text()
     assert f"Start with {url}index.md, or [install]({url}llms-install.md)." in llms
     assert "- [Overview](https://example.com/loom/getting-started/overview.md)" in llms
     # Only a docs/ path of its own is rewritten, not the tail of a URL or a longer path.
     assert "https://example.org/docs/x.md, agent-docs/y.md." in llms
     # llms-full.txt is a section of its own, before the Optional one a reader may skip.
-    assert f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): " in llms
+    assert f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): The {holds}" in llms
+    assert f"The full text of the {holds} is in one file: [llms-full.txt]" in llms.split("##")[0]
     assert llms.index("## Getting started") < llms.index("## Full text") < llms.index("## Optional")
 
     install = (site / "llms-install.md").read_text()
@@ -283,10 +292,11 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     full = (site / "llms-full.txt").read_text()
     assert full.startswith("# ClickHouse Loom\n\n> Summary.\n\n")
     assert f"{url}llms.txt lists every page" in full
-    sources = [line for line in full.splitlines() if line.startswith("Source: ")]
+    assert f"This file holds the {holds} in full" in full
+    sources = [line for line in full.splitlines() if line.startswith("> Source: ")]
     # The sidebar's order: a section's index, the lead pages, then the rest.
     assert sources == [
-        f"Source: {url}{html} (Markdown: {url}{md})"
+        f"> Source: {url}{html} (Markdown: {url}{md})"
         for html, md in (
             ("getting-started/overview/", "getting-started/overview.md"),
             ("getting-started/quickstart/", "getting-started/quickstart.md"),
@@ -308,8 +318,7 @@ def test_links_to_the_root_files_the_site_serves_point_at_the_site(tmp_path: Pat
     src = tmp_path / "page.md"
     src.write_text("# Page\n\nText.\n")
     markdown = "[a](../llms.txt) [b](../llms-install.md) [c](../README.md)\n"
-    config = {"site_url": "https://example.com/loom/"}
-    out = hooks.on_page_markdown(markdown, _page(src, "index.md"), config, None)
+    out = hooks.on_page_markdown(markdown, _page(src, "index.md"), _CONFIG, None)
     assert "[a](https://example.com/loom/llms.txt)" in out
     assert "[b](https://example.com/loom/llms-install.md)" in out
     assert "[c](https://github.com/ClickHouse/loom/blob/main/README.md)" in out
