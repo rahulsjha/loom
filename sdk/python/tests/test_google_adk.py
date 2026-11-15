@@ -30,7 +30,6 @@ class _FakeMemory:
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
         self._hits = hits or []
         self._abstain = abstain
-        self.rows: dict[str, dict[str, Any]] = {}
 
     async def search(self, query: str, **kw: Any) -> MemorySearchResult:
         self.calls.append(("search", (query,), kw))
@@ -46,18 +45,14 @@ class _FakeMemory:
         self.calls.append(("set_from_messages", (messages,), kw))
         return {}
 
-    async def get(self, key: str, **kw: Any) -> dict[str, Any] | None:
-        self.calls.append(("get", (key,), kw))
-        return self.rows.get(key)
+    async def delete(self, key: str, **kw: Any) -> bool:
+        self.calls.append(("delete", (key,), kw))
+        return True
 
 
 class _Agent:
     def __init__(self, memory: _FakeMemory) -> None:
         self.memory = memory
-
-    async def call(self, op: str, body: dict[str, Any], **kw: Any) -> dict[str, Any]:
-        self.memory.calls.append((op, (body,), kw))
-        return {}
 
 
 class _ScriptedLlm(BaseLlm):
@@ -85,6 +80,7 @@ def _model(text: str) -> types.Content:
 
 
 def _service(fake: _FakeMemory, **kw: Any) -> LoomMemoryService:
+    kw.setdefault("app_name", "travel")
     return LoomMemoryService(_Agent(fake), **kw)  # type: ignore[arg-type]
 
 
@@ -118,10 +114,14 @@ def test_it_is_an_adk_memory_service() -> None:
 
 def test_it_refuses_a_sync_agent_a_top_k_out_of_bounds_and_an_empty_prefix() -> None:
     with pytest.raises(TypeError, match="ADK awaits"):
-        LoomMemoryService(SyncAgent(org="o", namespace="n", base_url="http://127.0.0.1:9"))
+        LoomMemoryService(
+            SyncAgent(org="o", namespace="n", base_url="http://127.0.0.1:9"), app_name="travel"
+        )
     for top_k in (0, 501):
         with pytest.raises(ValueError, match="top_k"):
             _service(_FakeMemory(), top_k=top_k)
+    with pytest.raises(ValueError, match="app_name"):
+        _service(_FakeMemory(), app_name="")
     for prefix in ("", "/"):
         with pytest.raises(ValueError, match="key_prefix"):
             _service(_FakeMemory(), key_prefix=prefix)
@@ -136,7 +136,6 @@ def test_preload_memory_puts_the_matches_in_the_prompt() -> None:
     assert search[2] == {
         "top_k": 10,
         "user_id": "alice",
-        "agent_id": "travel",
         "namespace_scope": "this",
         "bodies": "full",
         "explain": False,
@@ -169,22 +168,26 @@ def test_the_model_reads_load_memory_results() -> None:
 def test_search_leaves_out_rows_below_the_floor_and_an_abstention() -> None:
     hits = [_hit("adk/1", "kept"), _hit("adk/2", "weak", below_threshold=True)]
     found = asyncio.run(
-        _service(_FakeMemory(hits)).search_memory(app_name="a", user_id="u", query="q")
+        _service(_FakeMemory(hits)).search_memory(app_name="travel", user_id="u", query="q")
     )
     assert [m.id for m in found.memories] == ["adk/1"]
     everything = _service(_FakeMemory(hits), honour_abstain=False)
-    found = asyncio.run(everything.search_memory(app_name="a", user_id="u", query="q"))
+    found = asyncio.run(everything.search_memory(app_name="travel", user_id="u", query="q"))
     assert [m.id for m in found.memories] == ["adk/1", "adk/2"]
     abstained = _service(_FakeMemory(hits, abstain=True))
-    assert not asyncio.run(abstained.search_memory(app_name="a", user_id="u", query="q")).memories
+    assert not asyncio.run(
+        abstained.search_memory(app_name="travel", user_id="u", query="q")
+    ).memories
 
 
 def test_search_cuts_to_top_k_and_skips_an_empty_query() -> None:
     fake = _FakeMemory([_hit(f"adk/{i}", f"fact {i}") for i in range(4)])
-    found = asyncio.run(_service(fake, top_k=2).search_memory(app_name="a", user_id="u", query="q"))
+    found = asyncio.run(
+        _service(fake, top_k=2).search_memory(app_name="travel", user_id="u", query="q")
+    )
     assert [m.id for m in found.memories] == ["adk/0", "adk/1"]
     assert not asyncio.run(
-        _service(fake).search_memory(app_name="a", user_id="u", query="  ")
+        _service(fake).search_memory(app_name="travel", user_id="u", query="  ")
     ).memories
     assert len(fake.calls) == 1
 
@@ -205,7 +208,7 @@ def test_a_saved_session_goes_to_extraction() -> None:
     ]
     assert all(str(m["timestamp"]).endswith("+00:00") for m in messages)
     # ADK's memory spans sessions: the rows carry none, so a delete can address them.
-    assert extract[2] == {"user_id": "alice", "agent_id": "travel", "defer": True}
+    assert extract[2] == {"user_id": "alice", "defer": True}
 
 
 def test_the_documented_turn_callback_sends_each_turn_once() -> None:
@@ -271,7 +274,9 @@ def test_events_without_text_send_nothing() -> None:
     fake = _FakeMemory()
     silent = Event(author="user", content=types.Content(parts=[types.Part(text=" ")]))
     asyncio.run(
-        _service(fake, defer=False).add_events_to_memory(app_name="a", user_id="u", events=[silent])
+        _service(fake, defer=False).add_events_to_memory(
+            app_name="travel", user_id="u", events=[silent]
+        )
     )
     assert fake.calls == []
 
@@ -289,7 +294,7 @@ def test_add_memory_writes_content_keyed_memories() -> None:
     (first, again) = fake.calls
     assert first[1][0] == again[1][0] and first[1][0].startswith("adk/")
     assert first[1][1] == "Alice prefers aisle seats"
-    assert first[2]["user_id"] == "alice" and first[2]["agent_id"] == "travel"
+    assert first[2]["user_id"] == "alice"
     assert first[2]["valid_at"].isoformat() == "2026-11-01T09:00:00+00:00"
     assert again[2]["valid_at"] is None
 
@@ -302,25 +307,31 @@ def test_a_timestamp_that_is_not_iso_is_no_valid_at() -> None:
     assert kw["valid_at"] is None
 
 
-def test_delete_memory_deletes_this_apps_version_of_the_key() -> None:
-    fake = _FakeMemory()
-    fake.rows["adk/1"] = {"memory_key": "adk/1", "version": 7}
-    service = _service(fake)
-    asyncio.run(service.delete_memory(app_name="travel", user_id="alice", memory_id="adk/1"))
-    scope = {"user_id": "alice", "agent_id": "travel"}
-    assert fake.calls == [
-        ("get", ("adk/1",), scope),
-        ("memory.delete_version", ({"memory_key": "adk/1", "version": 7},), scope),
-    ]
-
-
-def test_delete_memory_of_a_missing_key_deletes_nothing_and_needs_a_key() -> None:
+def test_delete_memory_deletes_the_key_and_needs_one() -> None:
     fake = _FakeMemory()
     service = _service(fake)
     asyncio.run(service.delete_memory(app_name="travel", user_id="alice", memory_id="adk/1"))
-    assert [c[0] for c in fake.calls] == ["get"]
+    assert fake.calls == [("delete", ("adk/1",), {"user_id": "alice"})]
     with pytest.raises(ValueError, match="memory_id"):
         asyncio.run(service.delete_memory(app_name="travel", user_id="alice"))
+
+
+def test_a_call_for_another_app_is_refused() -> None:
+    from google.adk.sessions import Session
+
+    fake = _FakeMemory()
+    service = _service(fake)
+    calls = [
+        service.search_memory(app_name="billing", user_id="alice", query="q"),
+        service.add_memory(app_name="billing", user_id="alice", memories=[]),
+        service.add_events_to_memory(app_name="billing", user_id="alice", events=[]),
+        service.add_session_to_memory(Session(id="s", app_name="billing", user_id="alice")),
+        service.delete_memory(app_name="billing", user_id="alice", memory_id="adk/1"),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError, match="its own Loom namespace"):
+            asyncio.run(call)
+    assert fake.calls == []
 
 
 def test_an_entry_id_is_the_key_delete_memory_deletes() -> None:
@@ -330,7 +341,7 @@ def test_an_entry_id_is_the_key_delete_memory_deletes() -> None:
         _hit("summary:s1", "a session", source="summary"),
     ]
     found = asyncio.run(
-        _service(_FakeMemory(hits)).search_memory(app_name="a", user_id="u", query="q")
+        _service(_FakeMemory(hits)).search_memory(app_name="travel", user_id="u", query="q")
     )
     assert [m.id for m in found.memories] == ["adk/1", "adk/1", None]
     assert [m.custom_metadata["source"] for m in found.memories] == ["fact", "chunk", "summary"]

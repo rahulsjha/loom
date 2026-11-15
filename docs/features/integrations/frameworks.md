@@ -375,22 +375,25 @@ async with Agent(org="acme", namespace="support") as loom_agent:
             after_agent_callback=save_turn,
         ),
         session_service=InMemorySessionService(),
-        memory_service=LoomMemoryService(loom_agent),
+        memory_service=LoomMemoryService(loom_agent, app_name="support"),
     )
 ```
 
-ADK scopes memory by app and user. The app name is the Loom `agent` of every write and
-narrows every search, and the ADK user is the Loom `user_id`. ADK's memory spans sessions,
-so rows carry no session and a search reads all of the user's memories in the app. The
-namespace comes from the Loom agent.
+ADK scopes memory by app and user. Loom's boundary is the namespace: a Loom write that
+matches a memory of the namespace merges into it, whichever agent wrote that memory, so two
+apps sharing a namespace would share and lose memories. A service therefore serves one ADK
+app, named by `app_name`, in the namespace of its Loom agent, and refuses a call for
+another app; give each app its own namespace and service. The ADK user is the Loom
+`user_id`. ADK's memory spans sessions, so rows carry no session and a search reads all of
+the user's memories in the namespace.
 
 | ADK                     | Loom                                                                                                                                                                                                                                                                                                                                |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `add_session_to_memory` | the text of the session's events, without the ones a rewind took back, sent to `memory.set_from_messages`; Loom extracts the facts and resolves duplicates and conflicts. A session added again is extracted again, so a callback that runs every turn, as `after_agent_callback` does, saves that turn's events, as in the example |
 | `add_events_to_memory`  | the same for the events given, such as the latest turn                                                                                                                                                                                                                                                                              |
 | `add_memory`            | one `memory.set` per entry under `adk/<first 20 hex of sha256(text)>`, its `timestamp` as the memory's `valid_at` when it is ISO 8601                                                                                                                                                                                               |
-| `search_memory`         | `memory.search` of the namespace it writes to; with `honour_abstain`, leaves out memories below Loom's floor and returns nothing when Loom abstains; each entry's `custom_metadata` carries `similarity` and `source`, and its `timestamp` is `valid_at` when the row has one                                                       |
-| `delete_memory`         | the entry's `id` deleted in the app and user given, never another app's row of the same key: the memory's key, or for a verbatim chunk the key of the memory it was written under. An entry Loom cannot delete by key, such as a session summary, has no `id`; [erasure](../memory/retention-and-erasure.md) removes it             |
+| `search_memory`         | `memory.search` of the namespace; with `honour_abstain`, leaves out memories below Loom's floor and returns nothing when Loom abstains; each entry's `custom_metadata` carries `similarity` and `source`, and its `timestamp` is `valid_at` when the row has one                                                                    |
+| `delete_memory`         | `memory.delete` of the entry's `id`: the memory's key, or for a verbatim chunk the key of the memory it was written under. An entry Loom cannot delete by key, such as a session summary, has no `id`; [erasure](../memory/retention-and-erasure.md) removes it                                                                     |
 
 Events keep their text parts only: the model's thoughts and tool calls and results are not
 sent, and neither is `custom_metadata`.
@@ -398,6 +401,7 @@ sent, and neither is `custom_metadata`.
 | `LoomMemoryService` argument | Default  | Effect                                                                                         |
 | ---------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
 | `agent`                      | required | the `loom.Agent` the service calls; ADK awaits its memory service, so a `SyncAgent` is refused |
+| `app_name`                   | required | the ADK app the service serves; a call for another app raises `ValueError`                     |
 | `top_k`                      | 10       | memories per search, from 1 to 500                                                             |
 | `honour_abstain`             | `True`   | leave out memories below Loom's floor; nothing when Loom abstains                              |
 | `defer`                      | `True`   | queue the extraction on the server instead of waiting for it                                   |

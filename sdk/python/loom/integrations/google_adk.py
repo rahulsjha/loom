@@ -28,13 +28,13 @@ service a ``Runner`` takes as ``memory_service=``. ADK's memory tools read it:
                 after_agent_callback=save_turn,
             ),
             session_service=InMemorySessionService(),
-            memory_service=LoomMemoryService(loom_agent),
+            memory_service=LoomMemoryService(loom_agent, app_name="support"),
         )
 
-ADK scopes memory by app and user: the app name becomes the Loom ``agent`` of
-each write and narrows each search, and the ADK user is the Loom ``user_id``.
-ADK's memory spans sessions, so rows carry no session. The namespace and
-isolation come from the Loom agent. Install with
+ADK scopes memory by app and user. Loom's boundary is the namespace, so a
+service serves one ADK app, the namespace of its Loom agent, and refuses a
+call for another app; the ADK user is the Loom ``user_id``. ADK's memory
+spans sessions, so rows carry no session. Install with
 ``pip install 'clickhouse-loom[google-adk]'``.
 """
 
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 
 class LoomMemoryService(BaseMemoryService):
-    """ADK ``BaseMemoryService`` over a Loom ``Agent``.
+    """ADK ``BaseMemoryService`` over a Loom ``Agent``, for one ADK app.
 
     ``add_session_to_memory`` and ``add_events_to_memory`` send the text of the
     events to ``memory.set_from_messages``, where Loom extracts the facts and
@@ -74,21 +74,21 @@ class LoomMemoryService(BaseMemoryService):
     events. Events a rewind took back are left out. ``add_memory`` writes each
     entry with ``memory.set`` under a key derived from its text
     (``<key_prefix>/<first 20 hex of sha256>``), its ``timestamp`` as the
-    memory's ``valid_at`` when it is ISO 8601. ``search_memory`` runs ``memory.search`` of the
-    namespace it writes to; with ``honour_abstain`` it leaves out memories
-    below Loom's floor and returns nothing when Loom abstains. A returned
-    entry's ``id`` is the Loom key ``delete_memory`` deletes, in the app and
-    user given: the memory's, or for a verbatim chunk the memory it was
-    written under. An entry Loom cannot delete by key, such as a session
-    summary, has no ``id``; Loom's erasure removes it.
-    ``custom_metadata`` is not kept. ADK awaits its memory service, so the
-    service takes a ``loom.Agent``.
+    memory's ``valid_at`` when it is ISO 8601. ``search_memory`` runs
+    ``memory.search`` of the namespace; with ``honour_abstain`` it leaves out
+    memories below Loom's floor and returns nothing when Loom abstains. A
+    returned entry's ``id`` is the Loom key ``delete_memory`` deletes: the
+    memory's, or for a verbatim chunk the memory it was written under. An
+    entry Loom cannot delete by key, such as a session summary, has no ``id``;
+    Loom's erasure removes it. ``custom_metadata`` is not kept. ADK awaits its
+    memory service, so the service takes a ``loom.Agent``.
     """
 
     def __init__(
         self,
         agent: Agent,
         *,
+        app_name: str,
         top_k: int = 10,
         honour_abstain: bool = True,
         defer: bool = True,
@@ -96,18 +96,23 @@ class LoomMemoryService(BaseMemoryService):
     ) -> None:
         if isinstance(agent, SyncAgent):
             raise TypeError("LoomMemoryService needs a loom.Agent: ADK awaits its memory service")
+        if not app_name:
+            raise ValueError("app_name must name the ADK app this service serves")
         if not 1 <= top_k <= 500:  # memory.search's bounds
             raise ValueError("top_k must be between 1 and 500")
+        key_prefix = key_prefix.strip("/")
+        if not key_prefix:
+            raise ValueError("key_prefix must not be empty")
         self._agent = agent
+        self._app_name = app_name
         self._top_k = top_k
         self._honour_abstain = honour_abstain
         self._defer = defer
-        if not key_prefix.strip("/"):
-            raise ValueError("key_prefix must not be empty")
-        self._key_prefix = key_prefix.strip("/")
+        self._key_prefix = key_prefix
 
     async def add_session_to_memory(self, session: Session) -> None:
-        await self._extract(session.app_name, session.user_id, get_active_events(session.events))
+        self._check_app(session.app_name)
+        await self._extract(session.user_id, get_active_events(session.events))
 
     async def add_events_to_memory(
         self,
@@ -118,7 +123,8 @@ class LoomMemoryService(BaseMemoryService):
         session_id: str | None = None,
         custom_metadata: Mapping[str, object] | None = None,
     ) -> None:
-        await self._extract(app_name, user_id, events)
+        self._check_app(app_name)
+        await self._extract(user_id, events)
 
     async def add_memory(
         self,
@@ -128,6 +134,7 @@ class LoomMemoryService(BaseMemoryService):
         memories: Sequence[MemoryEntry],
         custom_metadata: Mapping[str, object] | None = None,
     ) -> None:
+        self._check_app(app_name)
         for memory in memories:
             text = _text(memory.content)
             if not text:
@@ -137,20 +144,19 @@ class LoomMemoryService(BaseMemoryService):
                 f"{self._key_prefix}/{digest}",
                 text,
                 user_id=user_id,
-                agent_id=app_name,
                 valid_at=_iso_time(memory.timestamp),
             )
 
     async def search_memory(
         self, *, app_name: str, user_id: str, query: str
     ) -> SearchMemoryResponse:
+        self._check_app(app_name)
         if not query.strip():
             return SearchMemoryResponse()
         result = await self._agent.memory.search(
             query,
             top_k=self._top_k,
             user_id=user_id,
-            agent_id=app_name,
             # Read the namespace this service writes to, whatever the deployment's default.
             namespace_scope="this",
             # Unpinned, a large top_k serves excerpts (above 15 by default)
@@ -182,21 +188,21 @@ class LoomMemoryService(BaseMemoryService):
     async def delete_memory(
         self, *, app_name: str, user_id: str, memory_id: str | None = None
     ) -> None:
+        self._check_app(app_name)
         if not memory_id:
             raise ValueError("delete_memory needs the memory_id a search returned")
-        # memory.delete falls back to the key under any agent, which could be another
-        # app's row. Read the version this app's row holds, then delete that version
-        # under the exact identity; a row of another app is never touched.
-        row = await self._agent.memory.get(memory_id, user_id=user_id, agent_id=app_name)
-        if row is not None:
-            await self._agent.call(
-                "memory.delete_version",
-                {"memory_key": memory_id, "version": row["version"]},
-                user_id=user_id,
-                agent_id=app_name,
+        await self._agent.memory.delete(memory_id, user_id=user_id)
+
+    def _check_app(self, app_name: str) -> None:
+        # Loom merges a write into a matching memory of the namespace whichever agent
+        # wrote it, so two apps in one namespace would share and lose memories.
+        if app_name != self._app_name:
+            raise ValueError(
+                f"this LoomMemoryService serves the ADK app {self._app_name!r}, not "
+                f"{app_name!r}: give each app its own Loom namespace and service"
             )
 
-    async def _extract(self, app_name: str, user_id: str, events: Sequence[Event]) -> None:
+    async def _extract(self, user_id: str, events: Sequence[Event]) -> None:
         messages: list[dict[str, object]] = []
         for event in events:
             text = _text(event.content)
@@ -209,12 +215,7 @@ class LoomMemoryService(BaseMemoryService):
                     }
                 )
         if messages:
-            await self._agent.memory.set_from_messages(
-                messages,
-                user_id=user_id,
-                agent_id=app_name,
-                defer=self._defer,
-            )
+            await self._agent.memory.set_from_messages(messages, user_id=user_id, defer=self._defer)
 
 
 def _deletable_key(hit: MemorySearchHit) -> str | None:
