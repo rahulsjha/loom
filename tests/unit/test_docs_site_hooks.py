@@ -1,10 +1,13 @@
-"""The documentation site's MkDocs hook: meta description and links that leave docs/."""
+"""The documentation site's MkDocs hook: meta description, links that leave docs/, and the
+Markdown and llms files it writes after the build."""
 
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 _SPEC = importlib.util.spec_from_file_location(
@@ -201,3 +204,71 @@ def test_previous_and_next_links_follow_the_sorted_sidebar() -> None:
     assert home.previous_page is None and home.next_page is overview
     assert overview.previous_page is home and overview.next_page is faq
     assert faq.previous_page is overview and faq.next_page is None
+
+
+def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
+    root = tmp_path / "repo"
+    docs = root / "docs"
+    for rel, text in {
+        "index.md": "# Loom\n\nThe map. See [overview](getting-started/overview.md).\n",
+        "getting-started/overview.md": (
+            "# Overview\n\nLoom is a server. [Memory](../concepts/memory.md#keys), "
+            "[the README](../../README.md), ![shot](../images/a.png).\n"
+        ),
+        "concepts/memory.md": "# Memory\n\nA memory is a row.\n",
+        "use-cases/index.md": "# Use cases\n\nOne page per need.\n",
+        "reference/cli.md": "# CLI\n\nEvery command.\n",
+        "reference/operations/memory.md": "# memory\n\nFields.\n",
+        "faq.md": "# FAQ\n\nQuestions.\n",
+        "glossary.md": "# Glossary\n\nTerms.\n",
+    }.items():
+        (docs / rel).parent.mkdir(parents=True, exist_ok=True)
+        (docs / rel).write_text(text)
+    (root / "llms.txt").write_text(
+        "# ClickHouse Loom\n\n> Summary.\n\nStart with docs/index.md. Fields: "
+        "docs/reference/operations/. Needs: docs/use-cases/index.md.\n\n## Getting started\n\n"
+        "- [Overview](docs/getting-started/overview.md): Loom is a server.\n"
+    )
+    site = tmp_path / "site"
+    site.mkdir()
+    return root, site
+
+
+def test_the_site_serves_each_page_as_markdown_and_llms_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, site = _site_tree(tmp_path)
+    monkeypatch.setattr(hooks, "ROOT", root)
+    url = "https://example.com/loom/"
+    hooks.on_post_build({"site_dir": str(site), "site_url": url})
+
+    # Each page at its source path; links inside docs/ stay relative, others go to GitHub.
+    overview = (site / "getting-started/overview.md").read_text()
+    assert "[Memory](../concepts/memory.md#keys)" in overview
+    assert "[the README](https://github.com/ClickHouse/loom/blob/main/README.md)" in overview
+    assert (site / "reference/operations/memory.md").exists()
+
+    llms = (site / "llms.txt").read_text()
+    assert "Start with https://example.com/loom/index.md." in llms
+    assert "- [Overview](https://example.com/loom/getting-started/overview.md)" in llms
+    # A folder with no page of its own points at the folder on GitHub.
+    assert "https://github.com/ClickHouse/loom/tree/main/docs/reference/operations/." in llms
+    assert "https://example.com/loom/use-cases/index.md." in llms
+    assert llms.index("llms-full.txt") < llms.index("## Getting started")
+
+    full = (site / "llms-full.txt").read_text()
+    sources = [line for line in full.splitlines() if line.startswith("<!-- Source: ")]
+    assert sources == [
+        f"<!-- Source: {url}{uri} -->"
+        for uri in (
+            "getting-started/overview.md",
+            "use-cases/index.md",
+            "concepts/memory.md",
+            "faq.md",
+            "glossary.md",
+        )
+    ]
+    # One file holds every page, so links between pages are absolute.
+    assert f"[Memory]({url}concepts/memory.md#keys)" in full
+    assert f"![shot]({url}images/a.png)" in full
+    assert "CLI" not in full

@@ -14,6 +14,10 @@
   <meta property="og:url" content="{{ page.canonical_url if page else config.site_url }}">
   <meta property="og:image" content="https://raw.githubusercontent.com/ClickHouse/loom/main/.github/social-preview.png">
   <meta name="twitter:card" content="summary_large_image">
+  {% if page and page.file %}
+  {# The page's Markdown source, served beside it by hooks.py for agents that read Markdown. #}
+  <link rel="alternate" type="text/markdown" href="{{ config.site_url ~ page.file.src_uri }}">
+  {% endif %}
   {% if page and page.is_homepage %}
   {# Search-console ownership proof for https://clickhouse.github.io/loom/; read on the home page only. #}
   <meta name="google-site-verification" content="g4QRiv4z-PIoUloea55ghrJnNw7SPpEYQlDKiqsQIG0">

@@ -8,6 +8,11 @@ as written, and reference-style links are not rewritten (the docs use inline lin
 sidebar follows llms.txt's section order, with Overview and Quickstart first in Getting
 started, and a generated page gets no edit button (its source is the generator, not the
 page).
+
+After the build, the site also serves what agents fetch instead of HTML: each page's
+Markdown at its source path (`use-cases/agent-memory.md` next to `use-cases/agent-memory/`),
+`llms.txt` with its links pointing at those files, and `llms-full.txt` with the full text of
+the pages that say what Loom is and how to start (the whole docs are several megabytes).
 """
 
 from __future__ import annotations
@@ -57,7 +62,13 @@ def on_page_markdown(markdown, page, config, files):
         page.meta["description"] = html.escape(description)
     if _WHOLLY_GENERATED.search(markdown):
         page.edit_url = None
-    page_dir = posixpath.dirname("docs/" + page.file.src_uri)
+    return _rewrite_links(markdown, page.file.src_uri)
+
+
+def _rewrite_links(markdown: str, src_uri: str, site_url: str = "") -> str:
+    """`markdown` of the page at `src_uri` with its links that leave docs/ pointing at GitHub,
+    and, given `site_url`, its links inside docs/ pointing at that site's files too."""
+    page_dir = posixpath.dirname("docs/" + src_uri)
 
     def rewrite(m: re.Match[str]) -> str:
         if not m.group("link"):
@@ -67,8 +78,11 @@ def on_page_markdown(markdown, page, config, files):
             return m.group(0)
         resolved = posixpath.normpath(posixpath.join(page_dir, target))
         if resolved.startswith("docs/"):
-            return m.group(0)
-        base = RAW if m.group("bang") else BLOB
+            if not site_url:
+                return m.group(0)
+            base, resolved = site_url, resolved[len("docs/") :]
+        else:
+            base = RAW if m.group("bang") else BLOB
         anchor = m.group("anchor") or ""
         return f"{m.group('bang')}{m.group('text')}{base}{resolved}{anchor}{m.group('tail')}"
 
@@ -122,3 +136,47 @@ def on_nav(nav, config, files):
         page.previous_page = nav.pages[i - 1] if i else None
         page.next_page = nav.pages[i + 1] if i + 1 < len(nav.pages) else None
     return nav
+
+
+# llms-full.txt holds these sections in full, then the pages below; every other page is
+# one fetch away through llms.txt.
+_FULL_SECTIONS = ("getting-started", "use-cases", "concepts")
+_FULL_PAGES = ("faq.md", "glossary.md")
+# A docs/ path in llms.txt's prose; a full stop after it ends the sentence.
+_DOCS_PATH = re.compile(r"\bdocs/([\w./-]*[\w/-])")
+
+
+def on_post_build(config):
+    site = Path(config["site_dir"])
+    url = config["site_url"]
+    docs = ROOT / "docs"
+    for src in sorted(docs.rglob("*.md")):
+        uri = src.relative_to(docs).as_posix()
+        out = site / uri
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(_rewrite_links(src.read_text(encoding="utf-8"), uri), encoding="utf-8")
+
+    # The repository's llms.txt names pages by their docs/ path; on the site each one is
+    # its Markdown file, so "docs/use-cases/index.md" becomes "<site>/use-cases/index.md".
+    def site_path(m: re.Match[str]) -> str:
+        path = m.group(1)
+        if path.endswith("/") and not (docs / path / "index.md").exists():
+            return f"https://github.com/ClickHouse/loom/tree/main/docs/{path}"  # no page there
+        return url + path
+
+    llms = _DOCS_PATH.sub(site_path, (ROOT / "llms.txt").read_text())
+    head, sep, rest = llms.partition("\n\n## ")
+    full_note = (
+        f"The full text of the Getting started, Use cases and Concepts pages, the FAQ and the "
+        f"glossary, in one file: {url}llms-full.txt."
+    )
+    (site / "llms.txt").write_text(f"{head}\n\n{full_note}{sep}{rest}", encoding="utf-8")
+    pages = [p for folder in _FULL_SECTIONS for p in sorted((docs / folder).rglob("*.md"))]
+    pages += [docs / name for name in _FULL_PAGES]
+    parts = ["# ClickHouse Loom: getting started, use cases and concepts\n"]
+    for src in pages:
+        uri = src.relative_to(docs).as_posix()
+        # One file holds every page, so a link between them names the page's own file.
+        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url)
+        parts.append(f"<!-- Source: {url}{uri} -->\n\n{body.strip()}\n")
+    (site / "llms-full.txt").write_text("\n".join(parts), encoding="utf-8")

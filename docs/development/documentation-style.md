@@ -33,7 +33,7 @@ nothing is close enough. This page explains each leg, how the rank is computed, 
 which settings move it.
 ```
 
-`llms.txt` lists the first sentence of that paragraph for the page, and the documentation site uses it as the page's search description. Then, where they apply: the user-visible behaviour, the interfaces (operations, CLI, settings), how it works, limits and failure modes, and "Related" links. Architecture pages add **Source entry points** (paths and symbols) and **Invariants**.
+`llms.txt` lists the first sentence of that paragraph for the page, and the documentation site uses it as the page's search description. The site also serves each page's Markdown beside it (`use-cases/agent-memory.md`), `llms.txt` with its links pointing at those files, and `llms-full.txt` with the Getting started, Use cases and Concepts pages, the FAQ and the glossary in full. Then, where they apply: the user-visible behaviour, the interfaces (operations, CLI, settings), how it works, limits and failure modes, and "Related" links. Architecture pages add **Source entry points** (paths and symbols) and **Invariants**.
 
 ## Prerequisites
 
