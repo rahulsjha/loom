@@ -240,7 +240,8 @@ def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
         "## Optional\n\n- [CLI](docs/reference/cli.md): Every command.\n"
     )
     (root / "llms-install.md").write_text(
-        "# Install\n\nSee [quickstart](docs/getting-started/quickstart.md) and "
+        "# Install\n\nSee [quickstart](docs/getting-started/quickstart.md), "
+        "[clients](https://example.com/loom/features/clients/#cursor) and "
         "[the installer](install.sh).\n"
     )
     site = tmp_path / "site"
@@ -290,24 +291,26 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     install = (site / "llms-install.md").read_text()
     assert f"[quickstart]({url}getting-started/quickstart.md)" in install
     assert "[the installer](https://github.com/ClickHouse/loom/blob/main/install.sh)" in install
+    # A link to a site page goes to its Markdown copy, as in llms.txt.
+    assert f"[clients]({url}features/clients.md#cursor)" in install
 
     full = (site / "llms-full.txt").read_text()
     assert full.startswith("# ClickHouse Loom\n\n> Summary.\n\n")
     assert f"{url}llms.txt indexes every page" in full
     assert f"This file holds the {holds} in full" in full
     sources = [line for line in full.splitlines() if line.startswith("> Source: ")]
-    # The sidebar's order: a section's index, the lead pages, then the rest.
+    # What Loom is for comes first, the setup steps last: fetchers often cut a file short.
     assert sources == [
         f"> Source: {url}{html} (Markdown: {url}{md})"
         for html, md in (
             ("getting-started/overview/", "getting-started/overview.md"),
-            ("getting-started/quickstart/", "getting-started/quickstart.md"),
-            ("getting-started/agent-setup/", "getting-started/agent-setup.md"),
             ("use-cases/", "use-cases/index.md"),
             ("use-cases/agent-memory/", "use-cases/agent-memory.md"),
-            ("concepts/memory/", "concepts/memory.md"),
             ("faq/", "faq.md"),
             ("glossary/", "glossary.md"),
+            ("concepts/memory/", "concepts/memory.md"),
+            ("getting-started/quickstart/", "getting-started/quickstart.md"),
+            ("getting-started/agent-setup/", "getting-started/agent-setup.md"),
         )
     ]
     # One file holds every page, so links between pages are absolute.

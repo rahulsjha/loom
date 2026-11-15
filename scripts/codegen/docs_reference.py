@@ -437,7 +437,7 @@ def render_llms_txt() -> str:
         if sub == "getting-started":
             # The other install route, for clients without a Loom plugin, closes the section.
             title, outcome = page_summary(ROOT / "llms-install.md")
-            out.append(f"- [{title}](llms-install.md): {outcome}")
+            out.append(f"- [{title}](llms-install.md)" + (f": {outcome}" if outcome else ""))
         out.append("")
 
     # Development pages help contributors, not a reader deciding on or using Loom: the

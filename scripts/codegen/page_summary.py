@@ -32,13 +32,13 @@ SECTIONS = (
 LEAD_PAGES = ("getting-started/overview.md", "getting-started/quickstart.md")
 
 
-def page_key(uri: str) -> tuple[int, str, int, int, str]:
+def page_key(uri: str) -> tuple[str, int, int, str]:
     """Where the page at `uri` (relative to docs/) sits in its section, the folder `uri`
     starts with: the section's own pages, then each subsection's, by folder; within a
     folder, its index page, the lead pages, then the rest, by path."""
     sub, _, name = uri.partition("/")[2].rpartition("/")
     lead = LEAD_PAGES.index(uri) if uri in LEAD_PAGES else len(LEAD_PAGES)
-    return (int(bool(sub)), sub, int(name != "index.md"), lead, uri)
+    return (sub, int(name != "index.md"), lead, uri)
 
 
 def shorten(text: str, limit: int) -> str:

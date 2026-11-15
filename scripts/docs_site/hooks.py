@@ -150,6 +150,21 @@ def on_nav(nav, config, files):
 # one fetch away through llms.txt.
 _FULL_SECTIONS = ("getting-started", "use-cases", "concepts")
 _FULL_PAGES = ("faq.md", "glossary.md")
+# Fetchers often cut a long file short, so llms-full.txt opens with the pages that say what
+# Loom is for and closes with the setup steps.
+_FULL_FIRST = (
+    "getting-started/overview.md",
+    "use-cases/",
+    "faq.md",
+    "getting-started/whats-included.md",
+    "glossary.md",
+    "concepts/",
+)
+_FULL_LAST = (
+    "getting-started/quickstart.md",
+    "getting-started/agent-setup.md",
+    "getting-started/models-and-keys.md",
+)
 # A docs/ page named in llms.txt, not the tail of a longer path or URL.
 _DOCS_PAGE = re.compile(r"(?<![\w/.-])docs/([\w./-]*\.md)")
 # A link to the root llms-install.md.
@@ -177,11 +192,25 @@ def _with_source(body: str, site_url: str, uri: str) -> str:
     return f"{title}\n\n{source}\n{rest}\n"
 
 
-def _reading_order(docs: Path, folder: str) -> list[Path]:
-    """A section's own pages in the sidebar's order (its subsections are left out)."""
-    return sorted(
-        (docs / folder).glob("*.md"), key=lambda p: page_key(p.relative_to(docs).as_posix())
-    )
+def _full_text_pages(docs: Path) -> list[str]:
+    """The pages llms-full.txt holds, as docs/-relative paths, in `_FULL_FIRST` order, then the
+    rest of the sections, then `_FULL_LAST`."""
+    pages = [
+        p.relative_to(docs).as_posix()
+        for folder in _FULL_SECTIONS
+        for p in (docs / folder).glob("*.md")
+    ] + [name for name in _FULL_PAGES if (docs / name).exists()]
+    pages.sort(key=page_key)
+
+    def rank(uri: str) -> int:
+        for i, first in enumerate(_FULL_FIRST):
+            if uri == first or (first.endswith("/") and uri.startswith(first)):
+                return i
+        return (
+            len(_FULL_FIRST) + 1 + _FULL_LAST.index(uri) if uri in _FULL_LAST else len(_FULL_FIRST)
+        )
+
+    return sorted(pages, key=rank)
 
 
 def on_post_build(config):
@@ -222,9 +251,14 @@ def on_post_build(config):
     # The install steps a coding agent follows, at the root as in the repository.
     install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
     # Links resolve from the file's own place: the repository root, one level above docs/.
-    (site / "llms-install.md").write_text(
-        _rewrite_links(install, "../llms-install.md", url, to_site=True), encoding="utf-8"
+    install = _rewrite_links(install, "../llms-install.md", url, to_site=True)
+    # Its links to the site's HTML pages go to their Markdown copies, as llms.txt's do.
+    install = re.sub(
+        rf"\]\({re.escape(url)}([\w./-]+)/(#[^)\s]*)?\)",
+        lambda m: f"]({url}{m.group(1)}.md{m.group(2) or ''})",
+        install,
     )
+    (site / "llms-install.md").write_text(install, encoding="utf-8")
 
     # The title and summary quote of llms.txt open llms-full.txt too.
     intro = head.split("\n\n")[:2]
@@ -232,7 +266,6 @@ def on_post_build(config):
         "\n\n".join(intro)
         + f"\n\nThis file holds the {holds} in full; {url}llms.txt indexes every page.\n"
     ]
-    pages = [p for folder in _FULL_SECTIONS for p in _reading_order(docs, folder)]
-    for src in pages + [docs / name for name in _FULL_PAGES]:
-        parts.append(copies[src.relative_to(docs).as_posix()])
+    for uri in _full_text_pages(docs):
+        parts.append(copies[uri])
     (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")
