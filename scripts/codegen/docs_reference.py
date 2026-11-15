@@ -407,7 +407,7 @@ def render_llms_txt() -> str:
         "attaches, with its pins filled in. To connect to a running server: "
         "docs/getting-started/connect-a-coding-agent.md. To decide whether Loom fits: "
         "docs/getting-started/overview.md; for one need, docs/use-cases/index.md. "
-        "Every operation's fields are in docs/reference/operations/.",
+        "Every operation's fields are in docs/reference/operations.md and the pages it links.",
         "",
     ]
     for heading, sub in SECTIONS:
@@ -424,7 +424,7 @@ def render_llms_txt() -> str:
             rel = p.relative_to(ROOT).as_posix()
             out.append(f"- [{title}]({rel})" + (f": {outcome}" if outcome else ""))
         out.append("")
-    out.append("## Optional\n")
+    out.append("## FAQ and glossary\n")
     for p in (docs / "glossary.md", docs / "faq.md"):
         if p.exists():
             title, outcome = page_summary(p)

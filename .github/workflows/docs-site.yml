@@ -14,6 +14,7 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - "llms.txt"
+      - "llms-install.md"
       - "scripts/docs_site/**"
       - "scripts/codegen/page_summary.py"
       - ".github/workflows/docs-site.yml"

@@ -2,7 +2,7 @@
 
 > Loom is a self-hosted MCP server that gives AI agents shared long-term memory, document search with citations and a code index. It keeps its data in ClickHouse, with Postgres as an option for live memory and knowledge state, and serves it over MCP, HTTP and the Python and TypeScript SDKs.
 
-Start with docs/index.md (the map). To install Loom, a coding agent reads docs/getting-started/agent-setup.md and follows the agent-setup.txt each release attaches, with its pins filled in. To connect to a running server: docs/getting-started/connect-a-coding-agent.md. To decide whether Loom fits: docs/getting-started/overview.md; for one need, docs/use-cases/index.md. Every operation's fields are in docs/reference/operations/.
+Start with docs/index.md (the map). To install Loom, a coding agent reads docs/getting-started/agent-setup.md and follows the agent-setup.txt each release attaches, with its pins filled in. To connect to a running server: docs/getting-started/connect-a-coding-agent.md. To decide whether Loom fits: docs/getting-started/overview.md; for one need, docs/use-cases/index.md. Every operation's fields are in docs/reference/operations.md and the pages it links.
 
 ## Getting started
 
@@ -178,7 +178,7 @@ Start with docs/index.md (the map). To install Loom, a coding agent reads docs/g
 - [Repository guide](docs/development/repository-guide.md): What every top-level directory holds, where a concern lives inside `server/`, the order to read the code in, and the conventions a pull request fails without.
 - [Testing](docs/development/testing.md): Which suite a test belongs in, what each suite needs to run, how tests skip when their environment is missing, which gates CI enforces, and how to regenerate what they pin.
 
-## Optional
+## FAQ and glossary
 
 - [Glossary](docs/glossary.md): Loom's terms, alphabetically, each defined once.
 - [Frequently asked questions](docs/faq.md): Short answers to the first questions people ask.

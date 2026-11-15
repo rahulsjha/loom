@@ -11,8 +11,9 @@ page).
 
 After the build, the site also serves what agents fetch instead of HTML: each page's
 Markdown at its source path (`use-cases/agent-memory.md` next to `use-cases/agent-memory/`),
-`llms.txt` with its links pointing at those files, and `llms-full.txt` with the full text of
-the pages that say what Loom is and how to start (the whole docs are several megabytes).
+`llms.txt` with its links pointing at those files, `llms-full.txt` with the full text of
+the pages that say what Loom is and how to start (the whole docs are several megabytes),
+and the repository's `llms-install.md`.
 """
 
 from __future__ import annotations
@@ -142,8 +143,28 @@ def on_nav(nav, config, files):
 # one fetch away through llms.txt.
 _FULL_SECTIONS = ("getting-started", "use-cases", "concepts")
 _FULL_PAGES = ("faq.md", "glossary.md")
-# A docs/ path in llms.txt's prose; a full stop after it ends the sentence.
-_DOCS_PATH = re.compile(r"\bdocs/([\w./-]*[\w/-])")
+# A docs/ page named in llms.txt, not the tail of a longer path or URL.
+_DOCS_PAGE = re.compile(r"(?<![\w/.-])docs/([\w./-]*\.md)")
+
+
+def _html_url(site_url: str, uri: str) -> str:
+    """The HTML page MkDocs builds from the docs/ file at `uri`."""
+    page = uri[: -len(".md")]
+    if page == "index" or page.endswith("/index"):
+        page = page[: -len("index")]
+    else:
+        page += "/"
+    return site_url + page
+
+
+def _reading_order(docs: Path, folder: str) -> list[Path]:
+    """A section's pages in the sidebar's order: its index, the lead pages, then the rest."""
+    pages = []
+    for p in (docs / folder).rglob("*.md"):
+        uri = p.relative_to(docs).as_posix()
+        lead = _FIRST_PAGES.index(uri) if uri in _FIRST_PAGES else len(_FIRST_PAGES)
+        pages.append((not uri.endswith("/index.md"), lead, uri, p))
+    return [p for *_key, p in sorted(pages)]
 
 
 def on_post_build(config):
@@ -158,25 +179,31 @@ def on_post_build(config):
 
     # The repository's llms.txt names pages by their docs/ path; on the site each one is
     # its Markdown file, so "docs/use-cases/index.md" becomes "<site>/use-cases/index.md".
-    def site_path(m: re.Match[str]) -> str:
-        path = m.group(1)
-        if path.endswith("/") and not (docs / path / "index.md").exists():
-            return f"https://github.com/ClickHouse/loom/tree/main/docs/{path}"  # no page there
-        return url + path
-
-    llms = _DOCS_PATH.sub(site_path, (ROOT / "llms.txt").read_text())
+    llms = (ROOT / "llms.txt").read_text(encoding="utf-8")
+    llms = _DOCS_PAGE.sub(lambda m: url + m.group(1), llms)
     head, sep, rest = llms.partition("\n\n## ")
     full_note = (
-        f"The full text of the Getting started, Use cases and Concepts pages, the FAQ and the "
-        f"glossary, in one file: {url}llms-full.txt."
+        f"The pages that say what Loom is and how to start, in one file: {url}llms-full.txt."
     )
     (site / "llms.txt").write_text(f"{head}\n\n{full_note}{sep}{rest}", encoding="utf-8")
-    pages = [p for folder in _FULL_SECTIONS for p in sorted((docs / folder).rglob("*.md"))]
-    pages += [docs / name for name in _FULL_PAGES]
-    parts = ["# ClickHouse Loom: getting started, use cases and concepts\n"]
-    for src in pages:
+
+    # The install steps a coding agent follows, at the root as in the repository.
+    install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
+    (site / "llms-install.md").write_text(
+        _rewrite_links(install, "../llms-install.md", url), encoding="utf-8"
+    )
+
+    # The title and summary quote of llms.txt open llms-full.txt too.
+    intro = head.split("\n\n")[:2]
+    parts = [
+        "\n\n".join(intro)
+        + f"\n\nThis file holds some sections in full; {url}llms.txt lists every page.\n"
+    ]
+    pages = [p for folder in _FULL_SECTIONS for p in _reading_order(docs, folder)]
+    for src in pages + [docs / name for name in _FULL_PAGES]:
         uri = src.relative_to(docs).as_posix()
         # One file holds every page, so a link between them names the page's own file.
         body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url)
-        parts.append(f"<!-- Source: {url}{uri} -->\n\n{body.strip()}\n")
-    (site / "llms-full.txt").write_text("\n".join(parts), encoding="utf-8")
+        source = f"Source: {_html_url(url, uri)} (Markdown: {url}{uri})"
+        parts.append(f"{source}\n\n{body.strip()}\n")
+    (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")

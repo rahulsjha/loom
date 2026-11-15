@@ -211,11 +211,14 @@ def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
     docs = root / "docs"
     for rel, text in {
         "index.md": "# Loom\n\nThe map. See [overview](getting-started/overview.md).\n",
+        "getting-started/agent-setup.md": "# Agent setup\n\nFor an agent.\n",
         "getting-started/overview.md": (
             "# Overview\n\nLoom is a server. [Memory](../concepts/memory.md#keys), "
             "[the README](../../README.md), ![shot](../images/a.png).\n"
         ),
+        "getting-started/quickstart.md": "# Quickstart\n\nBoot it.\n",
         "concepts/memory.md": "# Memory\n\nA memory is a row.\n",
+        "use-cases/agent-memory.md": "# Agent memory\n\nMemory for agents.\n",
         "use-cases/index.md": "# Use cases\n\nOne page per need.\n",
         "reference/cli.md": "# CLI\n\nEvery command.\n",
         "reference/operations/memory.md": "# memory\n\nFields.\n",
@@ -225,9 +228,13 @@ def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
         (docs / rel).parent.mkdir(parents=True, exist_ok=True)
         (docs / rel).write_text(text)
     (root / "llms.txt").write_text(
-        "# ClickHouse Loom\n\n> Summary.\n\nStart with docs/index.md. Fields: "
-        "docs/reference/operations/. Needs: docs/use-cases/index.md.\n\n## Getting started\n\n"
+        "# ClickHouse Loom\n\n> Summary.\n\nStart with docs/index.md. Not a page: "
+        "https://example.org/docs/x.md, agent-docs/y.md.\n\n## Getting started\n\n"
         "- [Overview](docs/getting-started/overview.md): Loom is a server.\n"
+    )
+    (root / "llms-install.md").write_text(
+        "# Install\n\nSee [quickstart](docs/getting-started/quickstart.md) and "
+        "[the installer](install.sh).\n"
     )
     site = tmp_path / "site"
     site.mkdir()
@@ -251,24 +258,33 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     llms = (site / "llms.txt").read_text()
     assert "Start with https://example.com/loom/index.md." in llms
     assert "- [Overview](https://example.com/loom/getting-started/overview.md)" in llms
-    # A folder with no page of its own points at the folder on GitHub.
-    assert "https://github.com/ClickHouse/loom/tree/main/docs/reference/operations/." in llms
-    assert "https://example.com/loom/use-cases/index.md." in llms
+    # Only a docs/ path of its own is rewritten, not the tail of a URL or a longer path.
+    assert "https://example.org/docs/x.md, agent-docs/y.md." in llms
     assert llms.index("llms-full.txt") < llms.index("## Getting started")
 
+    install = (site / "llms-install.md").read_text()
+    assert f"[quickstart]({url}getting-started/quickstart.md)" in install
+    assert "[the installer](https://github.com/ClickHouse/loom/blob/main/install.sh)" in install
+
     full = (site / "llms-full.txt").read_text()
-    sources = [line for line in full.splitlines() if line.startswith("<!-- Source: ")]
+    assert full.startswith("# ClickHouse Loom\n\n> Summary.\n\n")
+    assert f"{url}llms.txt lists every page" in full
+    sources = [line for line in full.splitlines() if line.startswith("Source: ")]
+    # The sidebar's order: a section's index, the lead pages, then the rest.
     assert sources == [
-        f"<!-- Source: {url}{uri} -->"
-        for uri in (
-            "getting-started/overview.md",
-            "use-cases/index.md",
-            "concepts/memory.md",
-            "faq.md",
-            "glossary.md",
+        f"Source: {url}{html} (Markdown: {url}{md})"
+        for html, md in (
+            ("getting-started/overview/", "getting-started/overview.md"),
+            ("getting-started/quickstart/", "getting-started/quickstart.md"),
+            ("getting-started/agent-setup/", "getting-started/agent-setup.md"),
+            ("use-cases/", "use-cases/index.md"),
+            ("use-cases/agent-memory/", "use-cases/agent-memory.md"),
+            ("concepts/memory/", "concepts/memory.md"),
+            ("faq/", "faq.md"),
+            ("glossary/", "glossary.md"),
         )
     ]
     # One file holds every page, so links between pages are absolute.
     assert f"[Memory]({url}concepts/memory.md#keys)" in full
     assert f"![shot]({url}images/a.png)" in full
-    assert "CLI" not in full
+    assert "Every command." not in full
