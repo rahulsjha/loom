@@ -40,25 +40,6 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Memory](docs/concepts/memory.md): A memory is one claim an agent should find again: "deploys happen on Tuesdays", "the payments team owns the billing service".
 - [Retrieval and ranking](docs/concepts/retrieval-and-ranking.md): This page explains how `memory.search` finds rows.
 
-## Operations
-
-- [Exporting usage to a data warehouse](docs/operations/analytics-export.md): `loom export-analytics` writes one UTC day of usage and a snapshot of the namespaces to an S3 bucket as Parquet files, one file per entity per day, for a data warehouse to load.
-- [Backup and recovery](docs/operations/backup-and-recovery.md): A Loom backup is a ClickHouse backup, plus the document bucket while any catalog row names an object in it, and under the Postgres authority a backup of Postgres too.
-- [ClickHouse Cloud and Managed Postgres](docs/operations/clickhouse-cloud.md): This guide runs Loom on Kubernetes over two managed services: ClickHouse Cloud for projections, vectors, history and analytics, and ClickHouse Managed Postgres as the memory authority.
-- [Code index operations](docs/operations/code-index-operations.md): The code index runs only when an operator enables its workers and configures repositories.
-- [Deployment](docs/operations/deployment.md): Loom is one server image plus ClickHouse (and Postgres, under `LOOM_STORAGE_AUTHORITY=postgres`), with the document extractor service as an image of its own (container images).
-- [Kubernetes](docs/operations/kubernetes.md): `deploy/helm/loom` runs Loom as N identical replicas on Kubernetes: one Deployment of web pods over one ClickHouse service, each pod a full replica.
-- [Maintenance](docs/operations/maintenance.md): Every command here is a `loom` subcommand; run it inside the container that has the deployment's environment (`docker exec loom-server loom …`, or `loom-workers` in a split deployment).
-- [Monitoring](docs/operations/monitoring.md): This page says what to watch.
-- [Copying a namespace to another Loom](docs/operations/okf-sync.md): A job inside the private network copies one namespace from a private Loom to a public one on a schedule: `loom export-okf` reads it from the private Loom, and `loom import-okf --prune` writes it to the public Loom.
-- [Postgres memory authority](docs/operations/postgres.md): This guide sets up a Loom deployment whose live memory and knowledge document heads are held in Postgres, on ClickHouse Managed Postgres or on a self-hosted Postgres, and covers what to check before it serves.
-- [Running N replicas](docs/operations/replicas.md): Every Loom process is a full replica.
-- [Runtime settings](docs/operations/runtime-settings.md): Every setting is an environment variable `LOOM_<FIELD>` read at startup, and can also go in the YAML settings file (configuration reference).
-- [Single sign-on (OIDC)](docs/operations/sso.md): Loom can hand the human sign-in to an OpenID Connect identity provider.
-- [Supported versions](docs/operations/supported-versions.md): Releases N and N−1 get fixes, and an SDK at `X.Y` works with a server at `X.Y` or `X.(Y−1)`.
-- [Troubleshooting](docs/operations/troubleshooting.md): Each entry gives a symptom, the check that confirms its cause, and the fix.
-- [Upgrades](docs/operations/upgrades.md): An upgrade replaces the image (and the document extractor's, which holds no state) and applies the migrations the new build carries.
-
 ## Features
 
 - [Conversations and sessions](docs/features/conversations-and-sessions.md): Loom keeps three kinds of session state, each in its own plane:
@@ -102,6 +83,41 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Tracker plane](docs/features/tracker/overview.md): Nothing serves until `LOOM_TRACKER_ORG` is set and a source is registered.
 - [Tracker record contract](docs/features/tracker/record-contract.md): The `tracker.*` ops, and the tracker legs of `code.*` and `loom_search`, read a team's issues, pull requests and incidents live from the team's own ClickHouse with a read-only credential.
 
+## Guides
+
+- [Integrate Loom into an agent](docs/guides/agent-integration.md): This guide covers what an agent sends to Loom and how it reads the answers: the client surface, the identity, what to write, and how to read.
+- [Debug a request](docs/guides/debugging.md): Loom tags everything one request does with the same id, so tracing a request is a join.
+- [Customize the extraction pipeline](docs/guides/extraction-pipeline.md): `memory.set_from_messages` runs its transcript through an ordered list of steps that share one state.
+- [Headless bots](docs/guides/headless-bots.md): A headless bot runs with no person to paste a token, notice a silent failure or say "remember this".
+- [Import ClickGap memory](docs/guides/importing-clickgap-memory.md): `loom import-clickgap` loads one SQLite export shape, a ClickGap `lessons` store, into a Loom namespace; skip this page unless you have such an export.
+- [Store an investigation agent's memory](docs/guides/investigation-agent-memory.md): An investigation agent produces several kinds of state, and Loom has a plane for each.
+- [Optimize a namespace from its audit](docs/guides/optimize-namespace.md): A writer that uses `memory.set` as an object store (JSON blobs under hash keys, leases as memories, documents as claims) leaves every table consistent and recall useless.
+- [Tune Loom's performance](docs/guides/performance-tuning.md): Every lever on this page is a setting or a request field.
+- [Query Loom from Postgres](docs/guides/query-from-postgres.md): This guide reads a tenant's memories, conversations and usage from the org's own Postgres, where they can be joined with the application's tables.
+- [Teaching with Loom](docs/guides/teaching.md): Loom can serve as the lab environment for a course on AI agents, information retrieval, databases or software engineering.
+- [Tokens and grants](docs/guides/tokens-and-grants.md): Every call carries one JWT.
+- [Trace and resume long agent runs](docs/guides/trace-and-resume.md): A long run (process 300 files, crawl a repository, work through a plan) can stop part way: a crash, a full context window, a deploy, a pause.
+- [Use Loom without the dashboard](docs/guides/without-the-dashboard.md): Everything the `/me` dashboard does can be done from a terminal, a script or an agent's shell.
+
+## Operations
+
+- [Exporting usage to a data warehouse](docs/operations/analytics-export.md): `loom export-analytics` writes one UTC day of usage and a snapshot of the namespaces to an S3 bucket as Parquet files, one file per entity per day, for a data warehouse to load.
+- [Backup and recovery](docs/operations/backup-and-recovery.md): A Loom backup is a ClickHouse backup, plus the document bucket while any catalog row names an object in it, and under the Postgres authority a backup of Postgres too.
+- [ClickHouse Cloud and Managed Postgres](docs/operations/clickhouse-cloud.md): This guide runs Loom on Kubernetes over two managed services: ClickHouse Cloud for projections, vectors, history and analytics, and ClickHouse Managed Postgres as the memory authority.
+- [Code index operations](docs/operations/code-index-operations.md): The code index runs only when an operator enables its workers and configures repositories.
+- [Deployment](docs/operations/deployment.md): Loom is one server image plus ClickHouse (and Postgres, under `LOOM_STORAGE_AUTHORITY=postgres`), with the document extractor service as an image of its own (container images).
+- [Kubernetes](docs/operations/kubernetes.md): `deploy/helm/loom` runs Loom as N identical replicas on Kubernetes: one Deployment of web pods over one ClickHouse service, each pod a full replica.
+- [Maintenance](docs/operations/maintenance.md): Every command here is a `loom` subcommand; run it inside the container that has the deployment's environment (`docker exec loom-server loom …`, or `loom-workers` in a split deployment).
+- [Monitoring](docs/operations/monitoring.md): This page says what to watch.
+- [Copying a namespace to another Loom](docs/operations/okf-sync.md): A job inside the private network copies one namespace from a private Loom to a public one on a schedule: `loom export-okf` reads it from the private Loom, and `loom import-okf --prune` writes it to the public Loom.
+- [Postgres memory authority](docs/operations/postgres.md): This guide sets up a Loom deployment whose live memory and knowledge document heads are held in Postgres, on ClickHouse Managed Postgres or on a self-hosted Postgres, and covers what to check before it serves.
+- [Running N replicas](docs/operations/replicas.md): Every Loom process is a full replica.
+- [Runtime settings](docs/operations/runtime-settings.md): Every setting is an environment variable `LOOM_<FIELD>` read at startup, and can also go in the YAML settings file (configuration reference).
+- [Single sign-on (OIDC)](docs/operations/sso.md): Loom can hand the human sign-in to an OpenID Connect identity provider.
+- [Supported versions](docs/operations/supported-versions.md): Releases N and N−1 get fixes, and an SDK at `X.Y` works with a server at `X.Y` or `X.(Y−1)`.
+- [Troubleshooting](docs/operations/troubleshooting.md): Each entry gives a symptom, the check that confirms its cause, and the fix.
+- [Upgrades](docs/operations/upgrades.md): An upgrade replaces the image (and the document extractor's, which holds no state) and applies the migrations the new build carries.
+
 ## Reference
 
 - [Reference](docs/reference/index.md): Reference pages say what exists and what each option means.
@@ -119,22 +135,6 @@ Start with [the docs map](docs/index.md). To install Loom, a coding agent reads 
 - [Status of Loom's surfaces](docs/reference/status.md): This page counts each op group's stable ops, names its experimental ones, and lists every boolean setting that loads false, so a caller can tell, before relying on an op or a switch, whether it is stable and whether it is on by default.
 - [TypeScript SDK reference](docs/reference/typescript-sdk.md): The TypeScript SDK (`@clickhouse/loom`, source in `sdk/typescript/src/`) is a typed client over the HTTP API.
 - [Workers reference](docs/reference/workers.md): A worker is a supervised background loop: one pass function run on an interval by the worker supervisor.
-
-## Guides
-
-- [Integrate Loom into an agent](docs/guides/agent-integration.md): This guide covers what an agent sends to Loom and how it reads the answers: the client surface, the identity, what to write, and how to read.
-- [Debug a request](docs/guides/debugging.md): Loom tags everything one request does with the same id, so tracing a request is a join.
-- [Customize the extraction pipeline](docs/guides/extraction-pipeline.md): `memory.set_from_messages` runs its transcript through an ordered list of steps that share one state.
-- [Headless bots](docs/guides/headless-bots.md): A headless bot runs with no person to paste a token, notice a silent failure or say "remember this".
-- [Import ClickGap memory](docs/guides/importing-clickgap-memory.md): `loom import-clickgap` loads one SQLite export shape, a ClickGap `lessons` store, into a Loom namespace; skip this page unless you have such an export.
-- [Store an investigation agent's memory](docs/guides/investigation-agent-memory.md): An investigation agent produces several kinds of state, and Loom has a plane for each.
-- [Optimize a namespace from its audit](docs/guides/optimize-namespace.md): A writer that uses `memory.set` as an object store (JSON blobs under hash keys, leases as memories, documents as claims) leaves every table consistent and recall useless.
-- [Tune Loom's performance](docs/guides/performance-tuning.md): Every lever on this page is a setting or a request field.
-- [Query Loom from Postgres](docs/guides/query-from-postgres.md): This guide reads a tenant's memories, conversations and usage from the org's own Postgres, where they can be joined with the application's tables.
-- [Teaching with Loom](docs/guides/teaching.md): Loom can serve as the lab environment for a course on AI agents, information retrieval, databases or software engineering.
-- [Tokens and grants](docs/guides/tokens-and-grants.md): Every call carries one JWT.
-- [Trace and resume long agent runs](docs/guides/trace-and-resume.md): A long run (process 300 files, crawl a repository, work through a plan) can stop part way: a crash, a full context window, a deploy, a pause.
-- [Use Loom without the dashboard](docs/guides/without-the-dashboard.md): Everything the `/me` dashboard does can be done from a terminal, a script or an agent's shell.
 
 ## Architecture
 

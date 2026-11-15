@@ -29,6 +29,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from scripts.codegen.page_summary import SECTIONS, page_key, page_summary, shorten  # noqa: E402
+from scripts.docs_site.indexnow import SITE as INDEXNOW_SITE  # noqa: E402
+from scripts.docs_site.indexnow import page_url  # noqa: E402
 
 BLOB = "https://github.com/ClickHouse/loom/blob/main/"
 RAW = "https://raw.githubusercontent.com/ClickHouse/loom/main/"
@@ -172,13 +174,8 @@ _ROOT_INSTALL = re.compile(r"\]\(llms-install\.md\)")
 
 
 def _html_url(site_url: str, uri: str) -> str:
-    """The HTML page MkDocs builds from the docs/ file at `uri`."""
-    page = uri[: -len(".md")]
-    if page == "index" or page.endswith("/index"):
-        page = page[: -len("index")]
-    else:
-        page += "/"
-    return site_url + page
+    """The HTML page MkDocs builds from the docs/ file at `uri`, by the rule IndexNow uses."""
+    return site_url + (page_url(f"docs/{uri}") or "")[len(INDEXNOW_SITE) :]
 
 
 def _with_source(body: str, site_url: str, uri: str) -> str:
@@ -228,9 +225,8 @@ def on_post_build(config):
         places = [site / uri, site / _html_url("", uri) / "index.html.md"]
         # A section index is also at its URL with the slash swapped for `.md`
         # (`use-cases/` -> `use-cases.md`), where agents guess a page's Markdown.
-        folder = uri[: -len("/index.md")] if uri.endswith("/index.md") else ""
-        if folder and not (docs / f"{folder}.md").exists():
-            places.append(site / f"{folder}.md")
+        if uri.endswith("/index.md"):
+            places.append(site / f"{uri[: -len('/index.md')]}.md")
         for out in places:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text, encoding="utf-8")
@@ -245,8 +241,15 @@ def on_post_build(config):
     holds = f"{', '.join(names[:-1])} and {names[-1]} pages, the FAQ and the glossary"
     head += f" The full text of the {holds} is in one file: [llms-full.txt]({url}llms-full.txt)."
     full = f"## Full text\n\n- [llms-full.txt]({url}llms-full.txt): The {holds}, in one file.\n\n"
-    body, opt, optional = rest.partition("## Optional\n")
-    (site / "llms.txt").write_text(f"{head}{sep}{body}{full}{opt}{optional}", encoding="utf-8")
+    # Right after the use cases, where an agent reading the file from the top finds it early.
+    lead, uc, after = rest.partition("\n## Use cases\n")
+    if uc:
+        cases, nxt, tail = after.partition("\n## ")
+        rest = f"{lead}{uc}{cases}\n\n{full}## {tail}" if nxt else f"{rest}\n\n{full}"
+    else:
+        body, opt, optional = rest.partition("## Optional\n")
+        rest = f"{body}{full}{opt}{optional}"
+    (site / "llms.txt").write_text(f"{head}{sep}{rest}".rstrip("\n") + "\n", encoding="utf-8")
 
     # The install steps a coding agent follows, at the root as in the repository.
     install = (ROOT / "llms-install.md").read_text(encoding="utf-8")

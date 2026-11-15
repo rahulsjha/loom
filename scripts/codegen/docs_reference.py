@@ -440,8 +440,9 @@ def render_llms_txt() -> str:
             out.append(f"- [{title}](llms-install.md)" + (f": {outcome}" if outcome else ""))
         out.append("")
 
-    # Getting started, use cases, FAQ and glossary, concepts, then the rest; Development last,
-    # as the Optional section the llms.txt format lets a reader skip.
+    # What Loom is for and how to use it come first (getting started, use cases, FAQ and
+    # glossary, concepts, features, guides), then operations and reference; Development is
+    # last, as the Optional section the llms.txt format lets a reader skip.
     titles = {sub: heading for heading, sub in SECTIONS}
     for sub in ("getting-started", "use-cases"):
         section(titles[sub], sub)
@@ -454,9 +455,11 @@ def render_llms_txt() -> str:
                 + (f": {outcome}" if outcome else "")
             )
     out.append("")
-    section(titles["concepts"], "concepts")
+    lead = ("concepts", "features", "guides")
+    for sub in lead:
+        section(titles[sub], sub)
     for heading, sub in SECTIONS:
-        if sub not in ("getting-started", "use-cases", "concepts", "development"):
+        if sub not in ("getting-started", "use-cases", *lead, "development"):
             section(heading, sub)
     section("Optional", "development")
     return "\n".join(out).rstrip("\n") + "\n"
