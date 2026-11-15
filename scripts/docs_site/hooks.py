@@ -63,12 +63,20 @@ def on_page_markdown(markdown, page, config, files):
         page.meta["description"] = html.escape(description)
     if _WHOLLY_GENERATED.search(markdown):
         page.edit_url = None
-    return _rewrite_links(markdown, page.file.src_uri)
+    site = config["site_url"] if config else ""
+    return _rewrite_links(markdown, page.file.src_uri, site_files=site)
 
 
-def _rewrite_links(markdown: str, src_uri: str, site_url: str = "") -> str:
+# Files at the repository root that the site serves itself (on_post_build).
+_SITE_FILES = ("llms.txt", "llms-install.md")
+
+
+def _rewrite_links(markdown: str, src_uri: str, site_url: str = "", site_files: str = "") -> str:
     """`markdown` of the page at `src_uri` with its links that leave docs/ pointing at GitHub,
-    and, given `site_url`, its links inside docs/ pointing at that site's files too."""
+    except the root files in `_SITE_FILES`, which point at `site_files` (the site's URL)
+    when given; and, given `site_url`, its links inside docs/ pointing at that site's files
+    too."""
+    site_files = site_files or site_url
     page_dir = posixpath.dirname("docs/" + src_uri)
 
     def rewrite(m: re.Match[str]) -> str:
@@ -82,6 +90,8 @@ def _rewrite_links(markdown: str, src_uri: str, site_url: str = "") -> str:
             if not site_url:
                 return m.group(0)
             base, resolved = site_url, resolved[len("docs/") :]
+        elif site_files and resolved in _SITE_FILES:
+            base = site_files
         else:
             base = RAW if m.group("bang") else BLOB
         anchor = m.group("anchor") or ""
@@ -107,16 +117,20 @@ def _top_key(item) -> tuple[int, str]:
     return (_SECTION_RANK.get(_folder(item), len(SECTIONS)), str(item.title))
 
 
-def _child_key(item) -> tuple[int, int, str]:
-    """Inside a section: its index page, the lead pages, the other pages, then subsections."""
-    if not item.is_page:
-        return (1, 0, str(item.title))
-    uri = item.file.src_uri
+def _page_key(uri: str) -> tuple[int, int, str]:
+    """A page's place in its section: the index page, the lead pages, then the others."""
     if uri.endswith("/index.md"):
         return (0, 0, uri)
     if uri in _FIRST_PAGES:
         return (0, 1 + _FIRST_PAGES.index(uri), uri)
     return (0, 1 + len(_FIRST_PAGES), uri)
+
+
+def _child_key(item) -> tuple[int, int, str]:
+    """Inside a section: its pages in `_page_key` order, then subsections."""
+    if not item.is_page:
+        return (1, 0, str(item.title))
+    return _page_key(item.file.src_uri)
 
 
 def _pages(items) -> list:
@@ -145,6 +159,7 @@ _FULL_SECTIONS = ("getting-started", "use-cases", "concepts")
 _FULL_PAGES = ("faq.md", "glossary.md")
 # A docs/ page named in llms.txt, not the tail of a longer path or URL.
 _DOCS_PAGE = re.compile(r"(?<![\w/.-])docs/([\w./-]*\.md)")
+_ROOT_INSTALL = re.compile(r"(?<![\w/.-])llms-install\.md")
 
 
 def _html_url(site_url: str, uri: str) -> str:
@@ -157,14 +172,16 @@ def _html_url(site_url: str, uri: str) -> str:
     return site_url + page
 
 
+def _source_line(site_url: str, uri: str) -> str:
+    """The line that names a copied page's HTML page, which a citation should point at."""
+    return f"Source: {_html_url(site_url, uri)} (Markdown: {site_url}{uri})"
+
+
 def _reading_order(docs: Path, folder: str) -> list[Path]:
-    """A section's pages in the sidebar's order: its index, the lead pages, then the rest."""
-    pages = []
-    for p in (docs / folder).rglob("*.md"):
-        uri = p.relative_to(docs).as_posix()
-        lead = _FIRST_PAGES.index(uri) if uri in _FIRST_PAGES else len(_FIRST_PAGES)
-        pages.append((not uri.endswith("/index.md"), lead, uri, p))
-    return [p for *_key, p in sorted(pages)]
+    """A section's own pages in the sidebar's order (its subsections are left out)."""
+    return sorted(
+        (docs / folder).glob("*.md"), key=lambda p: _page_key(p.relative_to(docs).as_posix())
+    )
 
 
 def on_post_build(config):
@@ -173,14 +190,20 @@ def on_post_build(config):
     docs = ROOT / "docs"
     for src in sorted(docs.rglob("*.md")):
         uri = src.relative_to(docs).as_posix()
-        out = site / uri
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(_rewrite_links(src.read_text(encoding="utf-8"), uri), encoding="utf-8")
+        # Links are absolute, so the same text serves both places the copy lives: beside
+        # the page (llms.txt and the page's <link> name it) and inside the page's folder,
+        # where the llms.txt format looks for a page's Markdown.
+        body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url)
+        text = f"{_source_line(url, uri)}\n\n{body.strip()}\n"
+        for out in {site / uri, site / _html_url("", uri) / "index.md"}:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text, encoding="utf-8")
 
     # The repository's llms.txt names pages by their docs/ path; on the site each one is
     # its Markdown file, so "docs/use-cases/index.md" becomes "<site>/use-cases/index.md".
     llms = (ROOT / "llms.txt").read_text(encoding="utf-8")
     llms = _DOCS_PAGE.sub(lambda m: url + m.group(1), llms)
+    llms = _ROOT_INSTALL.sub(url + "llms-install.md", llms)
     head, sep, rest = llms.partition("\n\n## ")
     full_note = (
         f"The pages that say what Loom is and how to start, in one file: {url}llms-full.txt."
@@ -189,6 +212,7 @@ def on_post_build(config):
 
     # The install steps a coding agent follows, at the root as in the repository.
     install = (ROOT / "llms-install.md").read_text(encoding="utf-8")
+    # Links resolve from the file's own place: the repository root, one level above docs/.
     (site / "llms-install.md").write_text(
         _rewrite_links(install, "../llms-install.md", url), encoding="utf-8"
     )
@@ -204,6 +228,5 @@ def on_post_build(config):
         uri = src.relative_to(docs).as_posix()
         # One file holds every page, so a link between them names the page's own file.
         body = _rewrite_links(src.read_text(encoding="utf-8"), uri, url)
-        source = f"Source: {_html_url(url, uri)} (Markdown: {url}{uri})"
-        parts.append(f"{source}\n\n{body.strip()}\n")
+        parts.append(f"{_source_line(url, uri)}\n\n{body.strip()}\n")
     (site / "llms-full.txt").write_text("\n---\n\n".join(parts), encoding="utf-8")

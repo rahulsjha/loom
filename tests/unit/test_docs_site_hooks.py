@@ -228,7 +228,7 @@ def _site_tree(tmp_path: Path) -> tuple[Path, Path]:
         (docs / rel).parent.mkdir(parents=True, exist_ok=True)
         (docs / rel).write_text(text)
     (root / "llms.txt").write_text(
-        "# ClickHouse Loom\n\n> Summary.\n\nStart with docs/index.md. Not a page: "
+        "# ClickHouse Loom\n\n> Summary.\n\nStart with docs/index.md, or llms-install.md. Not a page: "
         "https://example.org/docs/x.md, agent-docs/y.md.\n\n## Getting started\n\n"
         "- [Overview](docs/getting-started/overview.md): Loom is a server.\n"
     )
@@ -249,14 +249,18 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     url = "https://example.com/loom/"
     hooks.on_post_build({"site_dir": str(site), "site_url": url})
 
-    # Each page at its source path; links inside docs/ stay relative, others go to GitHub.
+    # Each page beside its HTML page and inside its folder, headed by its HTML URL, with
+    # links to other pages absolute and links that leave docs/ pointing at GitHub.
     overview = (site / "getting-started/overview.md").read_text()
-    assert "[Memory](../concepts/memory.md#keys)" in overview
+    assert overview == (site / "getting-started/overview/index.md").read_text()
+    assert overview.startswith(f"Source: {url}getting-started/overview/ (Markdown: ")
+    assert f"[Memory]({url}concepts/memory.md#keys)" in overview
     assert "[the README](https://github.com/ClickHouse/loom/blob/main/README.md)" in overview
     assert (site / "reference/operations/memory.md").exists()
+    assert (site / "index.md").read_text().startswith(f"Source: {url} (Markdown: {url}index.md)")
 
     llms = (site / "llms.txt").read_text()
-    assert "Start with https://example.com/loom/index.md." in llms
+    assert f"Start with {url}index.md, or {url}llms-install.md." in llms
     assert "- [Overview](https://example.com/loom/getting-started/overview.md)" in llms
     # Only a docs/ path of its own is rewritten, not the tail of a URL or a longer path.
     assert "https://example.org/docs/x.md, agent-docs/y.md." in llms
@@ -288,3 +292,14 @@ def test_the_site_serves_each_page_as_markdown_and_llms_files(
     assert f"[Memory]({url}concepts/memory.md#keys)" in full
     assert f"![shot]({url}images/a.png)" in full
     assert "Every command." not in full
+
+
+def test_links_to_the_root_files_the_site_serves_point_at_the_site(tmp_path: Path) -> None:
+    src = tmp_path / "page.md"
+    src.write_text("# Page\n\nText.\n")
+    markdown = "[a](../llms.txt) [b](../llms-install.md) [c](../README.md)\n"
+    config = {"site_url": "https://example.com/loom/"}
+    out = hooks.on_page_markdown(markdown, _page(src, "index.md"), config, None)
+    assert "[a](https://example.com/loom/llms.txt)" in out
+    assert "[b](https://example.com/loom/llms-install.md)" in out
+    assert "[c](https://github.com/ClickHouse/loom/blob/main/README.md)" in out

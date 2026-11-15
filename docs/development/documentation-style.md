@@ -108,4 +108,4 @@ pip install --require-hashes --no-deps --only-binary=:all: -r scripts/docs_site/
 mkdocs build --strict                         # the docs site build CI runs
 ```
 
-The site build also serves each page's Markdown beside its HTML page (`use-cases/agent-memory.md`), `llms.txt` with its links pointing at those files, and `llms-full.txt`, which holds the pages that say what Loom is and how to start, and the repository's `llms-install.md` (`scripts/docs_site/hooks.py`).
+The site build also serves each page's Markdown beside its HTML page (`use-cases/agent-memory.md`), `llms.txt` with its links pointing at those files, and `llms-full.txt`, which holds the pages that say what Loom is and how to start. It also serves the repository's `llms-install.md` (`scripts/docs_site/hooks.py`).
