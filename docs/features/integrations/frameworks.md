@@ -348,7 +348,7 @@ request out of the events the policy reads. Those policies trim events, not the 
 `LoomMemoryService` implements ADK's `BaseMemoryService`, which a `Runner` takes as
 `memory_service=`. ADK's own memory tools read it: `preload_memory` searches with the
 user's message before each model call and adds the matches to the prompt, and
-`load_memory` lets the model search. A callback saves a session or a turn. Install with
+`load_memory` lets the model search. A callback saves each turn. Install with
 `pip install 'clickhouse-loom[google-adk]'` (`google-adk` 2.14 or later 2.x).
 
 ```python
@@ -360,8 +360,9 @@ from loom import Agent
 from loom.integrations.google_adk import LoomMemoryService
 
 
-async def save_session(callback_context):
-    await callback_context.add_session_to_memory()
+async def save_turn(ctx):
+    turn = [e for e in ctx.session.events if e.invocation_id == ctx.invocation_id]
+    await ctx.add_events_to_memory(events=turn)
 
 
 async with Agent(org="acme", namespace="support") as loom_agent:
@@ -371,7 +372,7 @@ async with Agent(org="acme", namespace="support") as loom_agent:
             name="assistant",
             model="gemini-flash-latest",
             tools=[preload_memory],
-            after_agent_callback=save_session,
+            after_agent_callback=save_turn,
         ),
         session_service=InMemorySessionService(),
         memory_service=LoomMemoryService(loom_agent),
@@ -379,16 +380,17 @@ async with Agent(org="acme", namespace="support") as loom_agent:
 ```
 
 ADK scopes memory by app and user. The app name is the Loom `agent` of every write and
-narrows every search, and the ADK user is the Loom `user_id`; a search reads every session
-of that user. The namespace comes from the Loom agent.
+narrows every search, and the ADK user is the Loom `user_id`. ADK's memory spans sessions,
+so rows carry no session and a search reads all of the user's memories in the app. The
+namespace comes from the Loom agent.
 
-| ADK                     | Loom                                                                                                                                                                                                                                                                                                      |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add_session_to_memory` | the text of the session's events, without the ones a rewind took back, sent to `memory.set_from_messages` with the session id; Loom extracts the facts and resolves duplicates and conflicts. A session added again is extracted again, so a callback that runs every turn should save that turn's events |
-| `add_events_to_memory`  | the same for the events given, such as the latest turn                                                                                                                                                                                                                                                    |
-| `add_memory`            | one `memory.set` per entry under `adk/<first 20 hex of sha256(text)>`, its `timestamp` as the memory's `valid_at`                                                                                                                                                                                         |
-| `search_memory`         | `memory.search` of the namespace it writes to; with `honour_abstain`, leaves out memories below Loom's floor and returns nothing when Loom abstains; each entry's `custom_metadata` carries `similarity` and `source`, and its `timestamp` is `valid_at` when the row has one                             |
-| `delete_memory`         | `memory.delete` of the entry's `id`: the memory's key, or for a verbatim chunk the key of the memory it was written under. A session summary has no `id`; [erasure](../memory/retention-and-erasure.md) removes it                                                                                        |
+| ADK                     | Loom                                                                                                                                                                                                                                                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add_session_to_memory` | the text of the session's events, without the ones a rewind took back, sent to `memory.set_from_messages`; Loom extracts the facts and resolves duplicates and conflicts. A session added again is extracted again, so a callback that runs every turn, as `after_agent_callback` does, saves that turn's events, as in the example |
+| `add_events_to_memory`  | the same for the events given, such as the latest turn                                                                                                                                                                                                                                                                              |
+| `add_memory`            | one `memory.set` per entry under `adk/<first 20 hex of sha256(text)>`, its `timestamp` as the memory's `valid_at` when it is ISO 8601                                                                                                                                                                                               |
+| `search_memory`         | `memory.search` of the namespace it writes to; with `honour_abstain`, leaves out memories below Loom's floor and returns nothing when Loom abstains; each entry's `custom_metadata` carries `similarity` and `source`, and its `timestamp` is `valid_at` when the row has one                                                       |
+| `delete_memory`         | the entry's `id` deleted in the app and user given, never another app's row of the same key: the memory's key, or for a verbatim chunk the key of the memory it was written under. An entry Loom cannot delete by key, such as a session summary, has no `id`; [erasure](../memory/retention-and-erasure.md) removes it             |
 
 Events keep their text parts only: the model's thoughts and tool calls and results are not
 sent, and neither is `custom_metadata`.
@@ -399,7 +401,7 @@ sent, and neither is `custom_metadata`.
 | `top_k`                      | 10       | memories per search, from 1 to 500                                                             |
 | `honour_abstain`             | `True`   | leave out memories below Loom's floor; nothing when Loom abstains                              |
 | `defer`                      | `True`   | queue the extraction on the server instead of waiting for it                                   |
-| `key_prefix`                 | `adk`    | the prefix of `add_memory`'s keys                                                              |
+| `key_prefix`                 | `adk`    | the prefix of `add_memory`'s keys; an empty one is refused                                     |
 
 ## Pydantic AI
 

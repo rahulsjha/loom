@@ -3,7 +3,7 @@
 ``LoomMemoryService`` implements ``google.adk.memory.BaseMemoryService``, the
 service a ``Runner`` takes as ``memory_service=``. ADK's memory tools read it:
 ``preload_memory`` searches with the user's message before each model call,
-``load_memory`` lets the model search. A callback saves a session or a turn::
+``load_memory`` lets the model search. A callback saves each turn::
 
     from google.adk.agents import LlmAgent
     from google.adk.runners import Runner
@@ -13,8 +13,9 @@ service a ``Runner`` takes as ``memory_service=``. ADK's memory tools read it:
     from loom.integrations.google_adk import LoomMemoryService
 
 
-    async def save_session(callback_context):
-        await callback_context.add_session_to_memory()
+    async def save_turn(ctx):
+        turn = [e for e in ctx.session.events if e.invocation_id == ctx.invocation_id]
+        await ctx.add_events_to_memory(events=turn)
 
 
     async with Agent(org="acme", namespace="support") as loom_agent:
@@ -24,7 +25,7 @@ service a ``Runner`` takes as ``memory_service=``. ADK's memory tools read it:
                 name="assistant",
                 model="gemini-flash-latest",
                 tools=[preload_memory],
-                after_agent_callback=save_session,
+                after_agent_callback=save_turn,
             ),
             session_service=InMemorySessionService(),
             memory_service=LoomMemoryService(loom_agent),
@@ -32,7 +33,8 @@ service a ``Runner`` takes as ``memory_service=``. ADK's memory tools read it:
 
 ADK scopes memory by app and user: the app name becomes the Loom ``agent`` of
 each write and narrows each search, and the ADK user is the Loom ``user_id``.
-The namespace and isolation come from the Loom agent. Install with
+ADK's memory spans sessions, so rows carry no session. The namespace and
+isolation come from the Loom agent. Install with
 ``pip install 'clickhouse-loom[google-adk]'``.
 """
 
@@ -72,12 +74,13 @@ class LoomMemoryService(BaseMemoryService):
     events. Events a rewind took back are left out. ``add_memory`` writes each
     entry with ``memory.set`` under a key derived from its text
     (``<key_prefix>/<first 20 hex of sha256>``), its ``timestamp`` as the
-    memory's ``valid_at``. ``search_memory`` runs ``memory.search`` of the
+    memory's ``valid_at`` when it is ISO 8601. ``search_memory`` runs ``memory.search`` of the
     namespace it writes to; with ``honour_abstain`` it leaves out memories
     below Loom's floor and returns nothing when Loom abstains. A returned
-    entry's ``id`` is the Loom key ``delete_memory`` deletes: the memory's, or
-    for a verbatim chunk the memory it was written under. A session summary
-    has no key (``id`` is None); Loom's erasure removes it.
+    entry's ``id`` is the Loom key ``delete_memory`` deletes, in the app and
+    user given: the memory's, or for a verbatim chunk the memory it was
+    written under. An entry Loom cannot delete by key, such as a session
+    summary, has no ``id``; Loom's erasure removes it.
     ``custom_metadata`` is not kept. ADK awaits its memory service, so the
     service takes a ``loom.Agent``.
     """
@@ -99,12 +102,12 @@ class LoomMemoryService(BaseMemoryService):
         self._top_k = top_k
         self._honour_abstain = honour_abstain
         self._defer = defer
-        self._key_prefix = key_prefix.strip("/") or "adk"
+        if not key_prefix.strip("/"):
+            raise ValueError("key_prefix must not be empty")
+        self._key_prefix = key_prefix.strip("/")
 
     async def add_session_to_memory(self, session: Session) -> None:
-        await self._extract(
-            session.app_name, session.user_id, session.id, get_active_events(session.events)
-        )
+        await self._extract(session.app_name, session.user_id, get_active_events(session.events))
 
     async def add_events_to_memory(
         self,
@@ -115,7 +118,7 @@ class LoomMemoryService(BaseMemoryService):
         session_id: str | None = None,
         custom_metadata: Mapping[str, object] | None = None,
     ) -> None:
-        await self._extract(app_name, user_id, session_id, events)
+        await self._extract(app_name, user_id, events)
 
     async def add_memory(
         self,
@@ -135,7 +138,7 @@ class LoomMemoryService(BaseMemoryService):
                 text,
                 user_id=user_id,
                 agent_id=app_name,
-                valid_at=datetime.fromisoformat(memory.timestamp) if memory.timestamp else None,
+                valid_at=_iso_time(memory.timestamp),
             )
 
     async def search_memory(
@@ -181,11 +184,19 @@ class LoomMemoryService(BaseMemoryService):
     ) -> None:
         if not memory_id:
             raise ValueError("delete_memory needs the memory_id a search returned")
-        await self._agent.memory.delete(memory_id, user_id=user_id)
+        # memory.delete falls back to the key under any agent, which could be another
+        # app's row. Read the version this app's row holds, then delete that version
+        # under the exact identity; a row of another app is never touched.
+        row = await self._agent.memory.get(memory_id, user_id=user_id, agent_id=app_name)
+        if row is not None:
+            await self._agent.call(
+                "memory.delete_version",
+                {"memory_key": memory_id, "version": row["version"]},
+                user_id=user_id,
+                agent_id=app_name,
+            )
 
-    async def _extract(
-        self, app_name: str, user_id: str, session_id: str | None, events: Sequence[Event]
-    ) -> None:
+    async def _extract(self, app_name: str, user_id: str, events: Sequence[Event]) -> None:
         messages: list[dict[str, object]] = []
         for event in events:
             text = _text(event.content)
@@ -201,7 +212,6 @@ class LoomMemoryService(BaseMemoryService):
             await self._agent.memory.set_from_messages(
                 messages,
                 user_id=user_id,
-                session_id=session_id,
                 agent_id=app_name,
                 defer=self._defer,
             )
@@ -211,6 +221,14 @@ def _deletable_key(hit: MemorySearchHit) -> str | None:
     if hit.source == "fact":
         return hit.memory_key
     return hit.parent_memory_key or None
+
+
+def _iso_time(text: str | None) -> datetime | None:
+    """An ISO 8601 timestamp; ADK allows any text, which is not a ``valid_at``."""
+    try:
+        return datetime.fromisoformat(text) if text else None
+    except ValueError:
+        return None
 
 
 def _text(content: types.Content | None) -> str:

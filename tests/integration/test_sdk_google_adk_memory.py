@@ -1,7 +1,7 @@
-"""LoomMemoryService against a running Loom: a session an ADK Runner saves is
+"""LoomMemoryService against a running Loom: a turn an ADK Runner saves is
 extracted, and preload_memory puts it in a later session's prompt for the same
 app and user only; a memory, extracted or explicit, is deleted by the id a search
-returned."""
+returned, in its own app only."""
 
 from __future__ import annotations
 
@@ -41,8 +41,9 @@ class _EchoLlm(BaseLlm):
         yield LlmResponse(content=types.Content(role="model", parts=[types.Part(text="Noted.")]))
 
 
-async def _save(callback_context: Any) -> None:
-    await callback_context.add_session_to_memory()
+async def _save_turn(ctx: Any) -> None:
+    turn = [e for e in ctx.session.events if e.invocation_id == ctx.invocation_id]
+    await ctx.add_events_to_memory(events=turn)
 
 
 async def _turn(service: LoomMemoryService, app: str, user: str, text: str) -> str:
@@ -52,7 +53,7 @@ async def _turn(service: LoomMemoryService, app: str, user: str, text: str) -> s
     runner = Runner(
         app_name=app,
         agent=LlmAgent(
-            name="assistant", model=llm, tools=[preload_memory], after_agent_callback=_save
+            name="assistant", model=llm, tools=[preload_memory], after_agent_callback=_save_turn
         ),
         session_service=sessions,
         memory_service=service,
@@ -78,7 +79,6 @@ async def test_a_saved_session_reaches_a_later_prompt(agent) -> None:
     for app, user in (("travel", "bob"), ("billing", "alice")):
         found = await service.search_memory(app_name=app, user_id=user, query="Lisbon")
         assert not found.memories, (app, user)
-    # The extracted facts carry the session; the ids a search returns still delete them.
     found = await service.search_memory(app_name="travel", user_id="alice", query="Lisbon")
     facts = {m.id for m in found.memories if m.custom_metadata["source"] == "fact"}
     assert facts
@@ -88,16 +88,24 @@ async def test_a_saved_session_reaches_a_later_prompt(agent) -> None:
     assert not {m.id for m in found.memories if m.custom_metadata["source"] == "fact"} & facts
 
 
-async def test_add_memory_then_delete_by_id(agent) -> None:
+async def test_add_memory_then_delete_by_id_in_one_app(agent) -> None:
     service = LoomMemoryService(agent, honour_abstain=False)
     entry = MemoryEntry(content=types.Content(parts=[types.Part(text="Alice prefers aisle seats")]))
-    await service.add_memory(app_name="travel", user_id="alice", memories=[entry])
+    # The same text in two apps is the same key, one row in each.
+    for app in ("travel", "billing"):
+        await service.add_memory(app_name=app, user_id="alice", memories=[entry])
 
-    async def ids() -> list[str | None]:
-        found = await service.search_memory(app_name="travel", user_id="alice", query="aisle seat")
+    async def ids(app: str) -> list[str | None]:
+        found = await service.search_memory(app_name=app, user_id="alice", query="aisle seat")
         return [m.id for m in found.memories]
 
-    await eventually(ids, description="the memory found")
-    (memory_id,) = await ids()
-    await service.delete_memory(app_name="travel", user_id="alice", memory_id=memory_id)
-    assert await ids() == []
+    await eventually(lambda: ids("travel"), description="the travel memory found")
+    await eventually(lambda: ids("billing"), description="the billing memory found")
+    (memory_id,) = await ids("billing")
+    await service.delete_memory(app_name="billing", user_id="alice", memory_id=memory_id)
+    assert await ids("billing") == []
+    assert await ids("travel") == [memory_id]
+    # Another user, or an app that holds no row of the key, deletes nothing.
+    await service.delete_memory(app_name="travel", user_id="bob", memory_id=memory_id)
+    await service.delete_memory(app_name="billing", user_id="alice", memory_id=memory_id)
+    assert await ids("travel") == [memory_id]

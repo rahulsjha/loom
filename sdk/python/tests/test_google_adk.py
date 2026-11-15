@@ -30,6 +30,7 @@ class _FakeMemory:
         self.calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
         self._hits = hits or []
         self._abstain = abstain
+        self.rows: dict[str, dict[str, Any]] = {}
 
     async def search(self, query: str, **kw: Any) -> MemorySearchResult:
         self.calls.append(("search", (query,), kw))
@@ -45,14 +46,18 @@ class _FakeMemory:
         self.calls.append(("set_from_messages", (messages,), kw))
         return {}
 
-    async def delete(self, key: str, **kw: Any) -> bool:
-        self.calls.append(("delete", (key,), kw))
-        return True
+    async def get(self, key: str, **kw: Any) -> dict[str, Any] | None:
+        self.calls.append(("get", (key,), kw))
+        return self.rows.get(key)
 
 
 class _Agent:
     def __init__(self, memory: _FakeMemory) -> None:
         self.memory = memory
+
+    async def call(self, op: str, body: dict[str, Any], **kw: Any) -> dict[str, Any]:
+        self.memory.calls.append((op, (body,), kw))
+        return {}
 
 
 class _ScriptedLlm(BaseLlm):
@@ -111,12 +116,15 @@ def test_it_is_an_adk_memory_service() -> None:
     assert issubclass(LoomMemoryService, BaseMemoryService)
 
 
-def test_it_refuses_a_sync_agent_and_a_top_k_out_of_bounds() -> None:
+def test_it_refuses_a_sync_agent_a_top_k_out_of_bounds_and_an_empty_prefix() -> None:
     with pytest.raises(TypeError, match="ADK awaits"):
         LoomMemoryService(SyncAgent(org="o", namespace="n", base_url="http://127.0.0.1:9"))
     for top_k in (0, 501):
         with pytest.raises(ValueError, match="top_k"):
             _service(_FakeMemory(), top_k=top_k)
+    for prefix in ("", "/"):
+        with pytest.raises(ValueError, match="key_prefix"):
+            _service(_FakeMemory(), key_prefix=prefix)
 
 
 def test_preload_memory_puts_the_matches_in_the_prompt() -> None:
@@ -188,23 +196,37 @@ def test_a_saved_session_goes_to_extraction() -> None:
         await callback_context.add_session_to_memory()
 
     llm = _ScriptedLlm(script=[_model("Noted.")])
-    sessions = asyncio.run(
-        _run(_service(fake), llm, "I prefer aisle seats", after_agent_callback=save)
-    )
+    asyncio.run(_run(_service(fake), llm, "I prefer aisle seats", after_agent_callback=save))
     (extract,) = [c for c in fake.calls if c[0] == "set_from_messages"]
-    (session,) = asyncio.run(sessions.list_sessions(app_name="travel", user_id="alice")).sessions
     messages = extract[1][0]
     assert [(m["role"], m["content"]) for m in messages] == [
         ("user", "I prefer aisle seats"),
         ("assistant", "Noted."),
     ]
     assert all(str(m["timestamp"]).endswith("+00:00") for m in messages)
-    assert extract[2] == {
-        "user_id": "alice",
-        "session_id": session.id,
-        "agent_id": "travel",
-        "defer": True,
-    }
+    # ADK's memory spans sessions: the rows carry none, so a delete can address them.
+    assert extract[2] == {"user_id": "alice", "agent_id": "travel", "defer": True}
+
+
+def test_the_documented_turn_callback_sends_each_turn_once() -> None:
+    fake = _FakeMemory()
+
+    async def save_turn(ctx: Any) -> None:
+        turn = [e for e in ctx.session.events if e.invocation_id == ctx.invocation_id]
+        await ctx.add_events_to_memory(events=turn)
+
+    llm = _ScriptedLlm(script=[_model("Noted."), _model("Lisbon, then.")])
+    asyncio.run(
+        _run(
+            _service(fake),
+            llm,
+            "I prefer aisle seats",
+            "I fly to Lisbon",
+            after_agent_callback=save_turn,
+        )
+    )
+    sent = [[m["content"] for m in c[1][0]] for c in fake.calls if c[0] == "set_from_messages"]
+    assert sent == [["I prefer aisle seats", "Noted."], ["I fly to Lisbon", "Lisbon, then."]]
 
 
 def test_extraction_leaves_out_thoughts_tool_calls_and_rewound_turns() -> None:
@@ -272,11 +294,31 @@ def test_add_memory_writes_content_keyed_memories() -> None:
     assert again[2]["valid_at"] is None
 
 
-def test_delete_memory_deletes_the_key_and_needs_one() -> None:
+def test_a_timestamp_that_is_not_iso_is_no_valid_at() -> None:
+    fake = _FakeMemory()
+    entry = MemoryEntry(content=_model("Alice moved to Porto"), timestamp="last spring")
+    asyncio.run(_service(fake).add_memory(app_name="travel", user_id="alice", memories=[entry]))
+    ((_, _, kw),) = fake.calls
+    assert kw["valid_at"] is None
+
+
+def test_delete_memory_deletes_this_apps_version_of_the_key() -> None:
+    fake = _FakeMemory()
+    fake.rows["adk/1"] = {"memory_key": "adk/1", "version": 7}
+    service = _service(fake)
+    asyncio.run(service.delete_memory(app_name="travel", user_id="alice", memory_id="adk/1"))
+    scope = {"user_id": "alice", "agent_id": "travel"}
+    assert fake.calls == [
+        ("get", ("adk/1",), scope),
+        ("memory.delete_version", ({"memory_key": "adk/1", "version": 7},), scope),
+    ]
+
+
+def test_delete_memory_of_a_missing_key_deletes_nothing_and_needs_a_key() -> None:
     fake = _FakeMemory()
     service = _service(fake)
     asyncio.run(service.delete_memory(app_name="travel", user_id="alice", memory_id="adk/1"))
-    assert fake.calls == [("delete", ("adk/1",), {"user_id": "alice"})]
+    assert [c[0] for c in fake.calls] == ["get"]
     with pytest.raises(ValueError, match="memory_id"):
         asyncio.run(service.delete_memory(app_name="travel", user_id="alice"))
 
