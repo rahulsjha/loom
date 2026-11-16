@@ -1,0 +1,53 @@
+$ loom install --client gemini --server-url http://localhost:7777 --token "$LOOM_API_KEY"
+✓ gemini: wrote loom → /Users/vishaljha/oss/.loom-cmp/gemini724/home/.gemini/settings.json
+
+Restart the affected client(s) to load Loom (server: http://localhost:7777/mcp).
+
+$ cat ~/.gemini/settings.json   (token shown as <token>)
+{
+  "ui": {
+    "theme": "GitHub"
+  },
+  "mcpServers": {
+    "other": {
+      "command": "echo",
+      "args": [
+        "hi"
+      ]
+    },
+    "loom": {
+      "httpUrl": "http://localhost:7777/mcp?toolset=coding",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+
+$ gemini --version
+0.68.0
+$ gemini mcp list   (in a trusted folder)
+Configured MCP servers:
+
+✗ other: echo hi (stdio) - Disconnected
+✓ loom: http://localhost:7777/mcp?toolset=coding (http) - Connected
+
+# A settings.json with comments: nothing is written, the entry is printed
+$ loom install --client gemini --server-url http://localhost:7777 --token "$LOOM_API_KEY"
+ERROR (gemini): /Users/vishaljha/oss/.loom-cmp/gemini724/home2/.gemini/settings.json holds comments, which `loom install` cannot keep when it rewrites the file; nothing was written. Add this under 'mcpServers' yourself (replace <token> with your Loom token):
+{
+  "loom": {
+    "httpUrl": "http://localhost:7777/mcp?toolset=coding",
+    "headers": {
+      "Authorization": "Bearer <token>"
+    }
+  }
+}
+
+1 of 1 client(s) failed: gemini
+loom exit code: 1 (the CLI's 'any client failed' code)
+$ cat ~/.gemini/settings.json   (unchanged)
+{
+  // keep my theme
+  "ui": {"theme": "GitHub"}
+}
