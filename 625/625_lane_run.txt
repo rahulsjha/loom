@@ -1,0 +1,53 @@
+# The Lua lane on a sample module (python 3.12, this branch)
+$ cat app/util/init.lua
+-- utility module
+local json = require("lib.json")
+local cfg = require "app.config"
+local M = {}
+
+--[[ a long comment with function inside
+function fake() end ]]
+
+local function helper(a, b)
+  if a then
+    for i = 1, 3 do print(i) end
+  end
+  return string.format("%s", b)
+end
+
+function M.add(x, y)
+  local s = "end function ("
+  return helper(x, y)
+end
+
+function M:render(...)
+  repeat
+    self.count = self.count + 1
+  until self.count > 3
+  return M.add(1, 2), json.encode({})
+end
+
+M.reset = function(state)
+  state:clear()
+  table.insert(state, 1)
+  return cfg.load()
+end
+
+local handler = function() return helper(1, 2) end
+
+return M
+
+$ parse_lua(...) / reference_sites(...)
+  symbol  app.util.init::helper        lines 9-14  function helper(a, b)
+  symbol  app.util.init::M.add         lines 16-19  function M.add(x, y)
+  symbol  app.util.init::M.render      lines 21-26  function M:render(...)
+  symbol  app.util.init::M.reset       lines 28-32  function M.reset(state)
+  symbol  app.util.init::handler       lines 34-34  function handler()
+  includes (specifiers): ['lib.json', 'app.config']
+  includes resolved against {lib/json.lua, app/config/init.lua}: ['lib/json.lua', 'app/config/init.lua']
+  site    line  18 call helper
+  site    line  25 call add
+  site    line  25 call encode
+  site    line  31 call load
+  site    line  34 call helper
+  (print, string.format, table.insert and state:clear() are not sites; `fake` in the long comment and `end function (` in the string are not symbols)
