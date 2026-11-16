@@ -1,0 +1,14 @@
+# Loom 1.2.0 build 03c4aed94, LOOM_AUTH_REQUIRED=true, Python SDK from this branch
+
+## 1. The example exactly as documented (source row customer/4812/plan saved first in acme/support)
+$ python doc_block.py
+True customer/4812/plan
+
+## 2. Reading the copy in acme/billing
+agent_id * -> {'found': True, 'unchanged': False, 'memory_id': 'deeee5cc-f36a-42a3-9567-924ddfa837ce', 'value': 'Customer 4812 is on the Enterprise plan since the March renewal.', 'memory_type': 'semantic', 'confidence': 1.0, 'version': 1794838426997513690, 'v
+
+## 3. A key with no live row raises NotFound (the except branch)
+NotFound: [RESOURCE_NOT_FOUND] source memory 'customer/does-not-exist' not found in acme/support
+
+## 4. The same call on the stock single-user stack (LOOM_AUTH_REQUIRED=false)
+loom.errors.ValidationError: [VALIDATION_FAILED] cross_promote requires an authenticated caller; enable LOOM_AUTH_REQUIRED=true
