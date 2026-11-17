@@ -1,0 +1,57 @@
+pytest tests/unit/test_code_lang_thrift.py test_code_extractor_stamp.py test_code_lanes_corpus.py test_code_lanes_manifest.py test_code_regex_cost.py (python:3.12-bookworm, uv sync --frozen --all-extras)
+967 passed in 820.89s (0:13:40)
+
+full tests/unit/test_code_*.py + test_lang_*.py, main vs branch, same container:
+main:   1 failed, 5152 passed, 2 skipped, 1 warning in 1158.93s (0:19:18)
+branch: 4 failed, 5163 passed, 2 skipped, 1 warning in 1290.56s (0:21:30)
+(branch run before the fixture rename: the corpus/manifest failures were EnvLabelBadge.tsx parse timeouts during regeneration, fixed by the rerun above; hcl _REF_RE and cpp-deep-includes are timing flakes)
+
+expected.json diff:
+diff --git a/tests/fixtures/code_lanes/expected.json b/tests/fixtures/code_lanes/expected.json
+index dd752a679..fb561bca7 100644
+--- a/tests/fixtures/code_lanes/expected.json
++++ b/tests/fixtures/code_lanes/expected.json
+@@ -113,6 +113,11 @@
+   "sql/views/rollup.sql | calls | column": 3,
+   "sql/views/rollup.sql | calls | table": 4,
+   "sql/views/rollup.sql | calls | view": 1,
++  "thrift/acme/machines.thrift | includes | file": 1,
++  "thrift/acme/machines.thrift | inherits | interface": 1,
++  "thrift/acme/machines.thrift | uses_type | enum": 2,
++  "thrift/acme/machines.thrift | uses_type | struct": 7,
++  "thrift/acme/machines.thrift | uses_type | type": 6,
+   "tla/Ledger.cfg | calls | operator": 3,
+   "tla/Ledger.cfg | includes | file": 1,
+   "tla/Ledger.tla | calls | constant": 3,
+@@ -1665,6 +1670,31 @@
+     "view": 2
+    }
+   },
++  "thrift/acme/machines.thrift": {
++   "facets": {},
++   "includes": [
++    "thrift/acme/shared.thrift"
++   ],
++   "lang": "thrift",
++   "symbols": {
++    "enum": 1,
++    "function": 4,
++    "interface": 1,
++    "struct": 3,
++    "type": 1
++   }
++  },
++  "thrift/acme/shared.thrift": {
++   "facets": {},
++   "includes": [],
++   "lang": "thrift",
++   "symbols": {
++    "function": 1,
++    "interface": 1,
++    "struct": 2,
++    "type": 1
++   }
++  },
+   "tla/Ledger.cfg": {
+    "facets": {
+     "checks": 3
