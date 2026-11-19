@@ -1,7 +1,6 @@
 [INFO] Running com.clickhouse.loom.LoomClientTest
-[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.494 s -- in com.clickhouse.loom.LoomClientTest
-[INFO] Tests run: 20, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.137 s -- in com.clickhouse.loom.LoomClientTest
+[INFO] Tests run: 21, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
-[INFO] Total time:  2.558 s
-Apache Maven 3.9.9 (8e8579a9e76f7d015ee5ec7bfcdc97d260186937)
-Java version: 17.0.16, vendor: Azul Systems, Inc.
+[INFO] Total time:  8.959 s
+Java version: 17.0.16 (Azul Zulu), Apache Maven 3.9.9
