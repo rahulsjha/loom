@@ -1,0 +1,38 @@
+# Temporary, fork only: dashboard performance baseline for ClickHouse/loom#1023.
+name: perf baseline
+on:
+  workflow_dispatch:
+  push:
+    branches: [perf/dashboard-baseline]
+    paths: [frontend/**, .github/workflows/perf-baseline.yml]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Build sizes
+        run: npm run build 2>&1 | tail -40 | tee bundle-build.txt && npm run budget | tee -a bundle-build.txt
+      - name: Baseline (3 repeats, 4x CPU)
+        run: npx playwright test -c playwright.baseline.config.ts --repeat-each=3 --reporter=list
+        env:
+          CI: "1"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline
+          path: |
+            frontend/test-results/perf-baseline.jsonl
+            frontend/bundle-build.txt
