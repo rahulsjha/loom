@@ -9,7 +9,10 @@ const OUT = "test-results/perf-baseline.jsonl";
 const RATE = Number(process.env.PERF_CPU ?? 4);
 
 const SMALL = { memoryRows: 12, knowledgeRows: 12, runRows: 12, threadRows: 12, auditRows: 12, browseRows: 12, taskRows: 12 };
-const LARGE = { memoryRows: 100, knowledgeRows: 1000, runRows: 1000, threadRows: 300, auditRows: 1000, browseRows: 500, taskRows: 300 };
+// The largest page each view asks for: Memories' 100-row page size, Spaces' `limit: 200`
+// browse read, the Activity log's 100-row page (the fixtures answer every row they hold,
+// so a larger count would draw more than the server ever sends).
+const LARGE = { memoryRows: 100, knowledgeRows: 1000, runRows: 1000, threadRows: 300, auditRows: 100, browseRows: 200, taskRows: 300 };
 
 const ROUTES = ["/memories", "/library", "/runs", "/conversations", "/tasks", "/admin/activity", "/spaces", "/repositories", "/recall", "/graph", "/admin/usage", "/settings"];
 
