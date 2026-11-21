@@ -1,0 +1,153 @@
+name: exp640 (fork only, temporary)
+
+on:
+  push:
+    branches: ["exp640-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  UV_VERSION: "0.12.19"
+
+jobs:
+  clickhouse:
+    name: the ClickHouse release this run tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # `latest` moves; every job of this run takes the release it names now.
+      # Assigned first: a failed lookup then fails the step instead of writing "image=".
+      - id: resolve
+        run: |
+          image=$(bash dev/clickhouse_release.sh)
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+  integration-postgres:
+    name: pg${{ matrix.postgres }} run ${{ matrix.run }}
+    needs: [clickhouse]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # The oldest supported major and the newest.
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["16", "18"]
+        run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    env:
+      LOOM_CLICKHOUSE_IMAGE: ${{ needs.clickhouse.outputs.image }}
+      LOOM_CH_HOST: localhost
+      LOOM_CH_PORT: "8123"
+      LOOM_CH_USER: loom
+      LOOM_CH_READER_USER: loom_reader
+      LOOM_CH_PASSWORD: loomdev
+      LOOM_CH_DATABASE: loom
+      LOOM_CH_SECURE: "false"
+      LOOM_AUTH_REQUIRED: "false"
+      LOOM_JWT_SECRET: ci-only-jwt-secret
+      LOOM_RUNTIME_OVERRIDES_REFRESH_SECONDS: "1"
+      LOOM_BASE_URL: http://localhost:7777
+      LOOM_EMBEDDING_MODEL: fake-ngram-1024
+      LOOM_LLM_PROVIDER: fake
+      LOOM_LATENCY_BUDGET_MULTIPLIER: "10"
+      LOOM_BACKGROUND_WORKERS: "off"
+      LOOM_INSTANCE_LABEL: "ci:integration-postgres"
+      # The deployment's default code namespace, which the leakage gates' code-scope
+      # cases resolve bare code.* calls to.
+      LOOM_CODE_ORG: ci
+      LOOM_CODE_NAMESPACE: code-ci
+      LOOM_CODE_REPO: example/ci
+      # The end-user policy cases wait out a refresh: 2 s, as the integration parts use.
+      LOOM_MODEL_CALLS_POLICY_REFRESH_SECONDS: "2"
+      # Stock Postgres with one synchronous standby (dev/ci_start_postgres.sh).
+      LOOM_STORAGE_AUTHORITY: postgres
+      LOOM_PG_DSN: postgres://loom:loomdev@localhost:5432/loom
+      # The cells router's directory: a database of its own on the same server.
+      LOOM_ROUTER_PG_DSN: postgres://loom:loomdev@localhost:5432/loom_router
+      # An org's own Postgres with pg_clickhouse, reading the SQL surface
+      # (dev/ci_start_pg_clickhouse.sh); the image tag pins the extension release.
+      LOOM_PGCH_DSN: postgres://app:appdev@127.0.0.1:5433/app
+      LOOM_PGCH_VERSION: "0.11.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        id: python
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install Loom from uv.lock (dev, code extras)
+        run: |
+          uv sync --locked --python "${{ steps.python.outputs.python-path }}" --extra dev --extra code
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Start ClickHouse (loom config + lemmagen dictionary)
+        run: bash dev/ci_start_clickhouse.sh
+      - name: Start Postgres with a synchronous standby
+        env:
+          LOOM_PG_IMAGE: postgres:${{ matrix.postgres }}
+        run: bash dev/ci_start_postgres.sh
+      - name: Create the router directory's database
+        run: docker exec loom-pg psql -U loom -d loom -qc "CREATE DATABASE loom_router"
+      - name: Start Postgres with pg_clickhouse
+        env:
+          LOOM_PGCH_POSTGRES: ${{ matrix.postgres }}
+        run: bash dev/ci_start_pg_clickhouse.sh
+      - name: Apply migrations
+        run: python -m server.core.schema.migrate
+      # The service in front of Loom that signs a token per end user, so the isolation
+      # gates' end-user cases run against the Postgres read paths too.
+      - name: Test end-user issuer
+        id: issuer
+        run: python -m tests.end_user_issuer "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Boot control plane
+        run: |
+          LOOM_WEB_WORKERS=3 nohup sh scripts/serve.sh > server.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:7777/v1/health && exit 0
+            sleep 1
+          done
+          echo "control plane never became healthy"
+          tail -100 server.log
+          exit 1
+      - name: pytest test_pg_authority.py (whole file, as CI orders it)
+        id: full
+        continue-on-error: true
+        run: pytest -q -p no:cacheprovider tests/integration/test_pg_authority.py 2>&1 | tee full.txt; exit ${PIPESTATUS[0]}
+      - name: batching test x15 (prints its flush count)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          for i in $(seq 1 15); do
+            pytest -q -s -p no:cacheprovider "tests/integration/test_pg_authority.py::test_writes_made_together_share_their_clickhouse_inserts" 2>&1 | grep -E "FLUSHES=|passed|failed" | paste -sd' '
+          done | tee batching.txt
+      - name: overtake repro (fork only)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: pytest -q -s -p no:cacheprovider tests/integration/test_zz_640_repro.py 2>&1 | grep -E "REPRO640|passed|failed" | tee repro.txt
+      - name: summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "FULL: $(tail -1 full.txt)"
+          grep -E "^FAILED" full.txt || true
+          echo "BATCHING:"; cat batching.txt
+          echo "REPRO:"; cat repro.txt
+          test "${{ steps.full.outcome }}" = "success"
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-log-pg${{ matrix.postgres }}-run${{ matrix.run }}
+          path: server.log

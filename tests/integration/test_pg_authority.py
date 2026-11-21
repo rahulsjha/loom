@@ -403,6 +403,7 @@ async def test_writes_made_together_share_their_clickhouse_inserts(
         "AND query_start_time_microseconds >= fromUnixTimestamp64Micro({t:Int64})",
         parameters={"t": started},
     ).result_rows[0][0]
+    print(f"FLUSHES={flushes}")
     assert 0 < flushes < 20, flushes
 
 
