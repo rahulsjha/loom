@@ -122,29 +122,17 @@ jobs:
           echo "control plane never became healthy"
           tail -100 server.log
           exit 1
-      - name: pytest test_pg_authority.py (whole file, as CI orders it)
-        id: full
-        continue-on-error: true
-        run: pytest -q -p no:cacheprovider tests/integration/test_pg_authority.py 2>&1 | tee full.txt; exit ${PIPESTATUS[0]}
-      - name: batching test x15 (prints its flush count)
-        if: ${{ !cancelled() }}
-        continue-on-error: true
+      - name: the three set-set tests x40
         run: |
-          for i in $(seq 1 15); do
-            pytest -q -s -p no:cacheprovider "tests/integration/test_pg_authority.py::test_writes_made_together_share_their_clickhouse_inserts" 2>&1 | grep -E "FLUSHES=|passed|failed" | paste -sd' '
-          done | tee batching.txt
-      - name: overtake repro (fork only)
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: pytest -q -s -p no:cacheprovider tests/integration/test_zz_640_repro.py 2>&1 | grep -E "REPRO640|passed|failed" | tee repro.txt
-      - name: summary
-        if: ${{ !cancelled() }}
-        run: |
-          echo "FULL: $(tail -1 full.txt)"
-          grep -E "^FAILED" full.txt || true
-          echo "BATCHING:"; cat batching.txt
-          echo "REPRO:"; cat repro.txt
-          test "${{ steps.full.outcome }}" = "success"
+          T=tests/integration/test_pg_authority.py
+          bad=0
+          for i in $(seq 1 40); do
+            out=$(pytest -q -p no:cacheprovider -k "test_a_redact_reaches_a_revision_by_its_metadata or test_a_redaction_fences_the_claim_still_sending_the_old_text or test_a_fenced_holder_is_waited_out_after_its_delivery_moves_on" $T 2>&1)
+            echo "LOOP640 i=$i $(echo "$out" | tail -1)"
+            echo "$out" | grep -E "^FAILED" | sed "s/^/LOOP640FAIL i=$i /" || true
+            echo "$out" | grep -q "failed" && bad=$((bad+1))
+          done
+          echo "LOOP640 failing iterations: $bad"
       - name: Upload server log on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
