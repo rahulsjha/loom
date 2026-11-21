@@ -28,9 +28,16 @@ jobs:
         run: npm run budget
       - name: vitest (whole suite)
         run: npm run test
-      - name: biome format + lint
+      # The temporary baseline spec and config are not part of the PR: checked without them.
+      - name: biome format
         working-directory: .
-        run: npx --yes @biomejs/biome@2.5.14 format . && npx --yes @biomejs/biome@2.5.14 lint frontend/src
+        run: |
+          rm frontend/e2e/perf-baseline.spec.ts frontend/playwright.baseline.config.ts
+          npx --yes @biomejs/biome@2.5.14 format .
+      - name: biome lint
+        if: always()
+        working-directory: .
+        run: npx --yes @biomejs/biome@2.5.14 lint frontend/src
 
   e2e:
     runs-on: ubuntu-latest
@@ -106,14 +113,14 @@ jobs:
           rm e2e/perf-baseline.spec.ts
           npx playwright test e2e/perf-budget.spec.ts -g "Namespaces in your org" --repeat-each=5 --retries=0 --reporter=list,json || true
           git checkout HEAD -- e2e
-      - name: budget test, before (expected to fail on main)
+      - name: budget tests, before (the new one is expected to fail on main)
         env:
           CI: "1"
           PLAYWRIGHT_JSON_OUTPUT_NAME: ../out/budget-before.json
         run: |
           git checkout "$BASE" -- src
           rm e2e/perf-baseline.spec.ts
-          npx playwright test e2e/perf-budget.spec.ts -g "with 200 rows" --repeat-each=3 --retries=0 --reporter=list,json || true
+          npx playwright test e2e/perf-budget.spec.ts -g "Namespaces in your org" --repeat-each=5 --retries=0 --reporter=list,json || true
           git checkout HEAD -- src e2e
       - if: always()
         uses: actions/upload-artifact@v4
