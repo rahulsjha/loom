@@ -1,0 +1,122 @@
+# Temporary, fork only: checks and before/after measurement for the ClickHouse/loom#1023 Spaces PR.
+name: perf spaces 1023
+on:
+  push:
+    branches: [perf/spaces-measure]
+permissions:
+  contents: read
+env:
+  BASE: 0a00565ed
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: build (tsc -b + vite build)
+        run: npm run build
+      - name: bundle budget
+        run: npm run budget
+      - name: vitest (whole suite)
+        run: npm run test
+      - name: biome format + lint
+        working-directory: .
+        run: npx --yes @biomejs/biome@2.5.14 format . && npx --yes @biomejs/biome@2.5.14 lint frontend/src
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: playwright (repo e2e, minus the temporary baseline spec)
+        run: |
+          rm e2e/perf-baseline.spec.ts
+          npm run e2e -- --shard=${{ matrix.part }}/3
+        env:
+          CI: "1"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ matrix.part }}
+          path: frontend/test-results
+          if-no-files-found: ignore
+
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      # Same runner, same fixtures and spec; only frontend/src differs. Rounds alternate
+      # before (main) and after (this change), 3 repeats each.
+      - name: before/after /spaces (baseline spec, 4x CPU)
+        env:
+          CI: "1"
+        run: |
+          mkdir -p ../out
+          for round in 1 2; do
+            for side in before after; do
+              if [ "$side" = before ]; then git checkout "$BASE" -- src; else git checkout HEAD -- src; fi
+              rm -f test-results/perf-baseline.jsonl
+              npx playwright test -c playwright.baseline.config.ts -g "environment|baseline large /spaces" --repeat-each=3 --reporter=list || true
+              cp test-results/perf-baseline.jsonl "../out/$side-$round.jsonl"
+            done
+          done
+          git checkout HEAD -- src
+      # The new budget test: its numbers on this change (5 repeats), and that it fails on main.
+      - name: budget test, after (5 repeats)
+        env:
+          CI: "1"
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ../out/budget-after.json
+        run: |
+          rm e2e/perf-baseline.spec.ts
+          npx playwright test e2e/perf-budget.spec.ts -g "Namespaces in your org" --repeat-each=5 --retries=0 --reporter=list,json || true
+          git checkout HEAD -- e2e
+      - name: budget test, before (expected to fail on main)
+        env:
+          CI: "1"
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ../out/budget-before.json
+        run: |
+          git checkout "$BASE" -- src
+          rm e2e/perf-baseline.spec.ts
+          npx playwright test e2e/perf-budget.spec.ts -g "with 200 rows" --repeat-each=3 --retries=0 --reporter=list,json || true
+          git checkout HEAD -- src e2e
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-spaces-1023
+          path: out
